@@ -24,8 +24,6 @@ set(CMAKE_MODULE_PATH ${PROJ4_SOURCE_DIR}/cmake/modules ${CMAKE_MODULE_PATH})
 
 include(Proj4Utilities)
 
-message(STATUS "")
-colormsg(_HIBLUE_ "Configuring PROJ:")
 
 #################################################################################
 #PROJ version information
@@ -80,7 +78,7 @@ if (MSVC OR CMAKE_CONFIGURATION_TYPES)
   set (CMAKE_DEBUG_POSTFIX _d)
 endif ()
 
-option(PROJ4_TESTS "Enable build of collection of PROJ4 tests" ON)
+option(PROJ4_TESTS "Enable build of collection of PROJ4 tests" OFF)
 boost_report_value(PROJ4_TESTS)
 if(PROJ4_TESTS)
     include(CTest)
@@ -112,7 +110,6 @@ set(INCLUDEDIR "${DEFAULT_INCLUDEDIR}" CACHE PATH "The directory to install incl
 #################################################################################
 include_directories(${PROJ4_SOURCE_DIR}/src)
 
-message(STATUS "")
 add_subdirectory(nad)
 add_subdirectory(src)
 add_subdirectory(man)
