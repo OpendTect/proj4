@@ -11,10 +11,6 @@
 #################################################################################
 cmake_minimum_required(VERSION 2.6.0 FATAL_ERROR)
 
-# proj4 is an ANSI C project
-project(PROJ4 C)
-set(PROJECT_INTERN_NAME PROJ)
-
 #################################################################################
 # PROJ4 CMake modules
 #################################################################################
@@ -22,8 +18,12 @@ set(PROJECT_INTERN_NAME PROJ)
 set(CMAKE_MODULE_PATH ${PROJ4_SOURCE_DIR}/cmake ${CMAKE_MODULE_PATH})
 set(CMAKE_MODULE_PATH ${PROJ4_SOURCE_DIR}/cmake/modules ${CMAKE_MODULE_PATH})
 
+include(policies)
 include(Proj4Utilities)
 
+# proj4 is an ANSI C project
+project(PROJ4 C)
+set(PROJECT_INTERN_NAME PROJ)
 
 #################################################################################
 #PROJ version information
@@ -39,7 +39,6 @@ set(PROJ_BUILD_VERSION "12.0.0")
 include(Proj4SystemInfo)
 include(Proj4Config)
 include(Proj4Mac)
-include(policies)
 
 #################################################################################
 # Self-test build config
@@ -63,8 +62,8 @@ if (HAVE_PTHREAD_MUTEX_RECURSIVE_DEFN)
     add_definitions(-DHAVE_PTHREAD_MUTEX_RECURSIVE=1)
 endif()
 
-boost_report_value(PROJ_PLATFORM_NAME)
-boost_report_value(PROJ_COMPILER_NAME)
+#boost_report_value(PROJ_PLATFORM_NAME)
+#boost_report_value(PROJ_COMPILER_NAME)
 
 # Set a default build type for single-configuration cmake generators if
 # no build type is set.
@@ -79,7 +78,7 @@ if (MSVC OR CMAKE_CONFIGURATION_TYPES)
 endif ()
 
 option(PROJ4_TESTS "Enable build of collection of PROJ4 tests" OFF)
-boost_report_value(PROJ4_TESTS)
+#boost_report_value(PROJ4_TESTS)
 if(PROJ4_TESTS)
     include(CTest)
     enable_testing()
