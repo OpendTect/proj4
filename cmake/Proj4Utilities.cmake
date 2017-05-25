@@ -349,7 +349,7 @@ endmacro()
 #
 macro(proj_report_directory_property PROPNAME)
   get_directory_property(${PROPNAME} ${PROPNAME})
-  boost_report_value(${PROPNAME})
+  #  boost_report_value(${PROPNAME})
 endmacro()
 
 #
