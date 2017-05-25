@@ -1,8 +1,8 @@
 ##############################################
 ### SWITCH BETWEEN STATIC OR SHARED LIBRARY###
 ##############################################
-colormsg(_HIBLUE_ "Configuring proj library:")
-message(STATUS "")
+#colormsg(_HIBLUE_ "Configuring proj library:")
+#message(STATUS "")
 
 # default config, shared on unix and static on Windows
 if(UNIX)
