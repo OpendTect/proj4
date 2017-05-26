@@ -40,7 +40,7 @@ macro(proj_version)
   endif()
 
   message(STATUS "")
-  boost_report_value(${PROJECT_INTERN_NAME}_VERSION)
+#boost_report_value(${PROJECT_INTERN_NAME}_VERSION)
   if(WIN32)
     boost_report_value(${PROJECT_INTERN_NAME}_ABI_VERSION)
   endif(WIN32)
