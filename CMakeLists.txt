@@ -10,6 +10,11 @@
 # General settings
 #################################################################################
 cmake_minimum_required(VERSION 2.6.0 FATAL_ERROR)
+cmake_policy(SET CMP0048 NEW) # policy setting
+
+# proj4 is an ANSI C project
+project(PROJ4 C)
+set(PROJECT_INTERN_NAME PROJ)
 
 #################################################################################
 # PROJ4 CMake modules
@@ -18,12 +23,10 @@ cmake_minimum_required(VERSION 2.6.0 FATAL_ERROR)
 set(CMAKE_MODULE_PATH ${PROJ4_SOURCE_DIR}/cmake ${CMAKE_MODULE_PATH})
 set(CMAKE_MODULE_PATH ${PROJ4_SOURCE_DIR}/cmake/modules ${CMAKE_MODULE_PATH})
 
-include(policies)
 include(Proj4Utilities)
 
-# proj4 is an ANSI C project
-project(PROJ4 C)
-set(PROJECT_INTERN_NAME PROJ)
+#message(STATUS "")
+#colormsg(_HIBLUE_ "Configuring PROJ:")
 
 #################################################################################
 #PROJ version information
@@ -39,6 +42,7 @@ set(PROJ_BUILD_VERSION "12.0.0")
 include(Proj4SystemInfo)
 include(Proj4Config)
 include(Proj4Mac)
+include(policies)
 
 #################################################################################
 # Self-test build config
@@ -109,6 +113,7 @@ set(INCLUDEDIR "${DEFAULT_INCLUDEDIR}" CACHE PATH "The directory to install incl
 #################################################################################
 include_directories(${PROJ4_SOURCE_DIR}/src)
 
+#message(STATUS "")
 add_subdirectory(nad)
 add_subdirectory(src)
 add_subdirectory(man)
