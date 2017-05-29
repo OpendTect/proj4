@@ -23,24 +23,38 @@ if(NOT MSVC)
 endif ()
 
 if(BUILD_CS2CS)
- include(bin_cs2cs.cmake)
+  include(bin_cs2cs.cmake)
+  if (MSVC OR CMAKE_CONFIGURATION_TYPES)
+      # Add _d suffix for your debug versions of the tools
+      set_target_properties (cs2cs PROPERTIES
+		    DEBUG_POSTFIX ${CMAKE_DEBUG_POSTFIX})
+  endif ()
 endif(BUILD_CS2CS)
 
 if(BUILD_PROJ)
   include(bin_proj.cmake)
+  if (MSVC OR CMAKE_CONFIGURATION_TYPES)
+      # Add _d suffix for your debug versions of the tools
+      set_target_properties (binproj PROPERTIES
+		    DEBUG_POSTFIX ${CMAKE_DEBUG_POSTFIX})
+  endif ()
 endif(BUILD_PROJ)
 
 if(BUILD_GEOD)
   include(bin_geod.cmake)
   include(bin_geodtest.cmake)
+  if (MSVC OR CMAKE_CONFIGURATION_TYPES)
+      # Add _d suffix for your debug versions of the tools
+      set_target_properties (geod PROPERTIES
+		    DEBUG_POSTFIX ${CMAKE_DEBUG_POSTFIX})
+  endif ()
 endif(BUILD_GEOD)
 
 if(BUILD_NAD2BIN)
   include(bin_nad2bin.cmake)
+  if (MSVC OR CMAKE_CONFIGURATION_TYPES)
+      # Add _d suffix for your debug versions of the tools
+      set_target_properties (nad2bin PROPERTIES
+		    DEBUG_POSTFIX ${CMAKE_DEBUG_POSTFIX})
+  endif ()
 endif(BUILD_NAD2BIN)
-
-if (MSVC OR CMAKE_CONFIGURATION_TYPES)
-  # Add _d suffix for your debug versions of the tools
-  set_target_properties (cs2cs binproj geod nad2bin PROPERTIES
-    DEBUG_POSTFIX ${CMAKE_DEBUG_POSTFIX})
-endif ()
