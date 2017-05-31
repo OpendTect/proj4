@@ -35,6 +35,7 @@ include(Proj4Version)
 proj_version(MAJOR 4 MINOR 9 PATCH 3)
 set(PROJ_API_VERSION "12")
 set(PROJ_BUILD_VERSION "12.0.0")
+configure_file( FindProjLibVersion.cmake.in FindProjLibVersion.cmake)
 
 #################################################################################
 # Build features and variants
