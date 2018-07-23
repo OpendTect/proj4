@@ -1,6 +1,8 @@
 #define PJ_LIB__
-#include	<projects.h>
 
+#include <math.h>
+
+#include "projects.h"
 
 PROJ_HEAD(august, "August Epicycloidal") "\n\tMisc Sph, no inv.";
 #define M 1.333333333333333
@@ -23,15 +25,6 @@ static XY s_forward (LP lp, PJ *P) {           /* Spheroidal, forward */
 
 
 
-static void *freeup_new (PJ *P) {                       /* Destructor */
-    return pj_dealloc(P);
-}
-
-static void freeup (PJ *P) {
-    freeup_new (P);
-    return;
-}
-
 
 PJ *PROJECTION(august) {
     P->inv = 0;
@@ -39,33 +32,3 @@ PJ *PROJECTION(august) {
     P->es = 0.;
     return P;
 }
-
-#ifndef PJ_SELFTEST
-int pj_august_selftest (void) {return 0;}
-#else
-
-int pj_august_selftest (void) {
-    double tolerance_lp = 1e-10;
-    double tolerance_xy = 1e-7;
-
-    char s_args[] = {"+proj=august   +a=6400000    +lat_1=0 +lat_2=2"};
-
-    LP fwd_in[] = {
-        { 2, 1},
-        { 2,-1},
-        {-2, 1},
-        {-2,-1}
-    };
-
-    XY s_fwd_expect[] = {
-        {223404.97818097242,  111722.34028976287},
-        {223404.97818097242,  -111722.34028976287},
-        {-223404.97818097242,  111722.34028976287},
-        {-223404.97818097242,  -111722.34028976287},
-    };
-
-    return pj_generic_selftest (0, s_args, tolerance_xy, tolerance_lp, 4, 4, fwd_in, 0, s_fwd_expect, 0, 0, 0);
-}
-
-
-#endif

@@ -22,7 +22,12 @@
 ** SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
 #define PJ_LIB__
-#include <projects.h>
+
+#include <errno.h>
+#include <math.h>
+
+#include "proj.h"
+#include "projects.h"
 
 PROJ_HEAD(omerc, "Oblique Mercator")
     "\n\tCyl, Sph&Ell no_rot\n\t"
@@ -50,8 +55,10 @@ static XY e_forward (LP lp, PJ *P) {          /* Ellipsoidal, forward */
         T = .5 * (W + temp);
         V = sin(Q->B * lp.lam);
         U = (S * Q->singam - V * Q->cosgam) / T;
-        if (fabs(fabs(U) - 1.0) < EPS)
-            F_ERROR;
+        if (fabs(fabs(U) - 1.0) < EPS) {
+            proj_errno_set(P, PJD_ERR_TOLERANCE_CONDITION);
+            return xy;
+        }
         v = 0.5 * Q->ArB * log((1. - U)/(1. + U));
         temp = cos(Q->B * lp.lam);
                 if(fabs(temp) < TOL) {
@@ -97,28 +104,14 @@ static LP e_inverse (XY xy, PJ *P) {          /* Ellipsoidal, inverse */
         lp.phi = Up < 0. ? -M_HALFPI : M_HALFPI;
     } else {
         lp.phi = Q->E / sqrt((1. + Up) / (1. - Up));
-        if ((lp.phi = pj_phi2(P->ctx, pow(lp.phi, 1. / Q->B), P->e)) == HUGE_VAL)
-            I_ERROR;
+        if ((lp.phi = pj_phi2(P->ctx, pow(lp.phi, 1. / Q->B), P->e)) == HUGE_VAL) {
+            proj_errno_set(P, PJD_ERR_TOLERANCE_CONDITION);
+            return lp;
+        }
         lp.lam = - Q->rB * atan2((Sp * Q->cosgam -
             Vp * Q->singam), cos(Q->BrA * u));
     }
     return lp;
-}
-
-
-static void *freeup_new (PJ *P) {                       /* Destructor */
-    if (0==P)
-        return 0;
-    if (0==P->opaque)
-        return pj_dealloc (P);
-
-    pj_dealloc (P->opaque);
-    return pj_dealloc(P);
-}
-
-static void freeup (PJ *P) {
-    freeup_new (P);
-    return;
 }
 
 
@@ -129,18 +122,18 @@ PJ *PROJECTION(omerc) {
 
     struct pj_opaque *Q = pj_calloc (1, sizeof (struct pj_opaque));
     if (0==Q)
-        return freeup_new (P);
+        return pj_default_destructor (P, ENOMEM);
     P->opaque = Q;
 
-    Q->no_rot = pj_param(P->ctx, P->params, "tno_rot").i;
+    Q->no_rot = pj_param(P->ctx, P->params, "bno_rot").i;
         if ((alp = pj_param(P->ctx, P->params, "talpha").i) != 0)
-        alpha_c = pj_param(P->ctx, P->params, "ralpha").f;
+            alpha_c = pj_param(P->ctx, P->params, "ralpha").f;
         if ((gam = pj_param(P->ctx, P->params, "tgamma").i) != 0)
-        gamma = pj_param(P->ctx, P->params, "rgamma").f;
+            gamma = pj_param(P->ctx, P->params, "rgamma").f;
     if (alp || gam) {
         lamc    = pj_param(P->ctx, P->params, "rlonc").f;
         no_off =
-                    /* For libproj4 compatability */
+                    /* For libproj4 compatibility */
                     pj_param(P->ctx, P->params, "tno_off").i
                     /* for backward compatibility */
                     || pj_param(P->ctx, P->params, "tno_uoff").i;
@@ -159,7 +152,8 @@ PJ *PROJECTION(omerc) {
             (con = fabs(phi1)) <= TOL ||
             fabs(con - M_HALFPI) <= TOL ||
             fabs(fabs(P->phi0) - M_HALFPI) <= TOL ||
-            fabs(fabs(phi2) - M_HALFPI) <= TOL) E_ERROR(-33);
+            fabs(fabs(phi2) - M_HALFPI) <= TOL)
+                return pj_default_destructor(P, PJD_ERR_LAT_0_OR_ALPHA_EQ_90);
     }
     com = sqrt(P->one_es);
     if (fabs(P->phi0) > EPS) {
@@ -186,16 +180,12 @@ PJ *PROJECTION(omerc) {
     }
     if (alp || gam) {
         if (alp) {
-            gamma0 = asin(sin(alpha_c) / D);
+            gamma0 = aasin(P->ctx, sin(alpha_c) / D);
             if (!gam)
                 gamma = alpha_c;
         } else
-            alpha_c = asin(D*sin(gamma0 = gamma));
-        if ((con = fabs(alpha_c)) <= TOL ||
-            fabs(con - M_PI) <= TOL ||
-            fabs(fabs(P->phi0) - M_HALFPI) <= TOL)
-            E_ERROR(-32);
-        P->lam0 = lamc - asin(.5 * (F - 1. / F) *
+            alpha_c = aasin(P->ctx, D*sin(gamma0 = gamma));
+        P->lam0 = lamc - aasin(P->ctx, .5 * (F - 1. / F) *
            tan(gamma0)) / Q->B;
     } else {
         H = pow(pj_tsfn(phi1, sin(phi1), P->e), Q->B);
@@ -212,7 +202,7 @@ PJ *PROJECTION(omerc) {
            J * tan(.5 * Q->B * (lam1 - lam2)) / p) / Q->B);
         gamma0 = atan(2. * sin(Q->B * adjlon(lam1 - P->lam0)) /
            (F - 1. / F));
-        gamma = alpha_c = asin(D * sin(gamma0));
+        gamma = alpha_c = aasin(P->ctx, D * sin(gamma0));
     }
     Q->singam = sin(gamma0);
     Q->cosgam = cos(gamma0);
@@ -223,7 +213,7 @@ PJ *PROJECTION(omerc) {
     if (no_off)
         Q->u_0 = 0;
     else {
-        Q->u_0 = fabs(Q->ArB * atan2(sqrt(D * D - 1.), cos(alpha_c)));
+        Q->u_0 = fabs(Q->ArB * atan(sqrt(D * D - 1.) / cos(alpha_c)));
         if (P->phi0 < 0.)
             Q->u_0 = - Q->u_0;
     }
@@ -235,48 +225,3 @@ PJ *PROJECTION(omerc) {
 
     return P;
 }
-
-
-#ifndef PJ_SELFTEST
-int pj_omerc_selftest (void) {return 0;}
-#else
-
-int pj_omerc_selftest (void) {
-    double tolerance_lp = 1e-10;
-    double tolerance_xy = 1e-7;
-
-    char e_args[] = {"+proj=omerc   +ellps=GRS80  +lat_1=0.5 +lat_2=2"};
-
-    LP fwd_in[] = {
-        { 2, 1},
-        { 2,-1},
-        {-2, 1},
-        {-2,-1}
-    };
-
-    XY e_fwd_expect[] = {
-        { 222650.796885261341,  110642.229314983808},
-        { 222650.796885261341, -110642.229314983808},
-        {-222650.796885261545,  110642.229314983808},
-        {-222650.796885261545, -110642.229314983808},
-    };
-
-    XY inv_in[] = {
-        { 200, 100},
-        { 200,-100},
-        {-200, 100},
-        {-200,-100}
-    };
-
-    LP e_inv_expect[] = {
-        { 0.00179663056816996357,  0.000904369474808157338},
-        { 0.00179663056816996357, -0.000904369474820879583},
-        {-0.0017966305681604536,   0.000904369474808157338},
-        {-0.0017966305681604536,  -0.000904369474820879583},
-    };
-
-    return pj_generic_selftest (e_args, 0, tolerance_xy, tolerance_lp, 4, 4, fwd_in, e_fwd_expect, 0, inv_in, e_inv_expect, 0);
-}
-
-
-#endif

@@ -1,5 +1,8 @@
 #define PJ_LIB__
-#include <projects.h>
+#include <errno.h>
+#include "proj.h"
+#include "projects.h"
+#include "proj_math.h"
 
 PROJ_HEAD(lcc, "Lambert Conformal Conic")
     "\n\tConic, Sph&Ell\n\tlat_1= and lat_2= or lat_0";
@@ -22,7 +25,10 @@ static XY e_forward (LP lp, PJ *P) {          /* Ellipsoidal, forward */
     double rho;
 
     if (fabs(fabs(lp.phi) - M_HALFPI) < EPS10) {
-        if ((lp.phi * Q->n) <= 0.) F_ERROR;
+        if ((lp.phi * Q->n) <= 0.) {
+            proj_errno_set(P, PJD_ERR_TOLERANCE_CONDITION);
+            return xy;
+        }
         rho = 0.;
     } else {
         rho = Q->c * (Q->ellips ? pow(pj_tsfn(lp.phi, sin(lp.phi),
@@ -53,8 +59,11 @@ static LP e_inverse (XY xy, PJ *P) {          /* Ellipsoidal, inverse */
         }
         if (Q->ellips) {
             lp.phi = pj_phi2(P->ctx, pow(rho / Q->c, 1./Q->n), P->e);
-            if (lp.phi == HUGE_VAL)
-                I_ERROR;
+            if (lp.phi == HUGE_VAL) {
+                proj_errno_set(P, PJD_ERR_TOLERANCE_CONDITION);
+                return lp;
+            }
+
         } else
             lp.phi = 2. * atan(pow(Q->c / rho, 1./Q->n)) - M_HALFPI;
         lp.lam = atan2(xy.x, xy.y) / Q->n;
@@ -65,37 +74,6 @@ static LP e_inverse (XY xy, PJ *P) {          /* Ellipsoidal, inverse */
     return lp;
 }
 
-static void special(LP lp, PJ *P, struct FACTORS *fac) {
-    struct pj_opaque *Q = P->opaque;
-    double rho;
-    if (fabs(fabs(lp.phi) - M_HALFPI) < EPS10) {
-        if ((lp.phi * Q->n) <= 0.) return;
-        rho = 0.;
-    } else
-        rho = Q->c * (Q->ellips ? pow(pj_tsfn(lp.phi, sin(lp.phi),
-            P->e), Q->n) : pow(tan(M_FORTPI + .5 * lp.phi), -Q->n));
-    fac->code |= IS_ANAL_HK + IS_ANAL_CONV;
-    fac->k = fac->h = P->k0 * Q->n * rho /
-        pj_msfn(sin(lp.phi), cos(lp.phi), P->es);
-    fac->conv = - Q->n * lp.lam;
-}
-
-
-static void *freeup_new (PJ *P) {                       /* Destructor */
-    if (0==P)
-        return 0;
-    if (0==P->opaque)
-        return pj_dealloc (P);
-
-    pj_dealloc (P->opaque);
-    return pj_dealloc(P);
-}
-
-static void freeup (PJ *P) {
-    freeup_new (P);
-    return;
-}
-
 
 PJ *PROJECTION(lcc) {
     double cosphi, sinphi;
@@ -103,7 +81,7 @@ PJ *PROJECTION(lcc) {
     struct pj_opaque *Q = pj_calloc (1, sizeof (struct pj_opaque));
 
     if (0==Q)
-        return freeup_new (P);
+        return pj_default_destructor (P, ENOMEM);
     P->opaque = Q;
 
 
@@ -115,7 +93,9 @@ PJ *PROJECTION(lcc) {
         if (!pj_param(P->ctx, P->params, "tlat_0").i)
             P->phi0 = Q->phi1;
     }
-    if (fabs(Q->phi1 + Q->phi2) < EPS10) E_ERROR(-21);
+    if (fabs(Q->phi1 + Q->phi2) < EPS10)
+        return pj_default_destructor(P, PJD_ERR_CONIC_LAT_EQUAL);
+
     Q->n = sinphi = sin(Q->phi1);
     cosphi = cos(Q->phi1);
     secant = fabs(Q->phi1 - Q->phi2) >= EPS10;
@@ -145,52 +125,7 @@ PJ *PROJECTION(lcc) {
 
     P->inv = e_inverse;
     P->fwd = e_forward;
-    P->spc = special;
 
     return P;
 }
 
-
-#ifndef PJ_SELFTEST
-int pj_lcc_selftest (void) {return 0;}
-#else
-
-int pj_lcc_selftest (void) {
-    double tolerance_lp = 1e-10;
-    double tolerance_xy = 1e-7;
-
-    char e_args[] = {"+proj=lcc   +ellps=GRS80  +lat_1=0.5 +lat_2=2"};
-
-    LP fwd_in[] = {
-        { 2, 1},
-        { 2,-1},
-        {-2, 1},
-        {-2,-1}
-    };
-
-    XY e_fwd_expect[] = {
-        { 222588.439735968423,  110660.533870799671},
-        { 222756.879700278747, -110532.797660827026},
-        {-222588.439735968423,  110660.533870799671},
-        {-222756.879700278747, -110532.797660827026},
-    };
-
-    XY inv_in[] = {
-        { 200, 100},
-        { 200,-100},
-        {-200, 100},
-        {-200,-100}
-    };
-
-    LP e_inv_expect[] = {
-        { 0.00179635940600536667,  0.000904232207322381741},
-        { 0.00179635817735249777, -0.000904233135128348995},
-        {-0.00179635940600536667,  0.000904232207322381741},
-        {-0.00179635817735249777, -0.000904233135128348995},
-    };
-
-    return pj_generic_selftest (e_args, 0, tolerance_xy, tolerance_lp, 4, 4, fwd_in, e_fwd_expect, 0, inv_in, e_inv_expect, 0);
-}
-
-
-#endif

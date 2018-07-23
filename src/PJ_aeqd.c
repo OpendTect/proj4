@@ -27,7 +27,17 @@
 
 #define PJ_LIB__
 #include "geodesic.h"
-#include <projects.h>
+#include "proj.h"
+#include <errno.h>
+#include "projects.h"
+#include "proj_math.h"
+
+enum Mode {
+    N_POLE = 0,
+    S_POLE = 1,
+    EQUIT  = 2,
+    OBLIQ  = 3
+};
 
 struct pj_opaque {
     double  sinph0;
@@ -38,7 +48,7 @@ struct pj_opaque {
     double  Mp;
     double  He;
     double  G;
-    int     mode;
+    enum Mode mode;
     struct geod_geodesic g;
 };
 
@@ -47,10 +57,18 @@ PROJ_HEAD(aeqd, "Azimuthal Equidistant") "\n\tAzi, Sph&Ell\n\tlat_0 guam";
 #define EPS10 1.e-10
 #define TOL 1.e-14
 
-#define N_POLE  0
-#define S_POLE  1
-#define EQUIT   2
-#define OBLIQ   3
+
+static void *destructor (PJ *P, int errlev) {                        /* Destructor */
+    if (0==P)
+        return 0;
+
+    if (0==P->opaque)
+        return pj_default_destructor (P, errlev);
+
+    pj_dealloc (P->opaque->en);
+    return pj_default_destructor (P, errlev);
+}
+
 
 
 static XY e_guam_fwd(LP lp, PJ *P) {        /* Guam elliptical */
@@ -82,6 +100,7 @@ static XY e_forward (LP lp, PJ *P) {          /* Ellipsoidal, forward */
     switch (Q->mode) {
     case N_POLE:
         coslam = - coslam;
+        /*-fallthrough*/
     case S_POLE:
         xy.x = (rho = fabs(Q->Mp - pj_mlfn(lp.phi, sinphi, cosphi, Q->en))) *
             sin(lp.lam);
@@ -123,8 +142,10 @@ static XY s_forward (LP lp, PJ *P) {           /* Spheroidal, forward */
         xy.y = Q->sinph0 * sinphi + Q->cosph0 * cosphi * coslam;
 oblcon:
         if (fabs(fabs(xy.y) - 1.) < TOL)
-            if (xy.y < 0.)
-                F_ERROR
+            if (xy.y < 0.) {
+                proj_errno_set(P, PJD_ERR_TOLERANCE_CONDITION);
+                return xy;
+            }
             else
                 xy.x = xy.y = 0.;
         else {
@@ -138,8 +159,12 @@ oblcon:
     case N_POLE:
         lp.phi = -lp.phi;
         coslam = -coslam;
+        /*-fallthrough*/
     case S_POLE:
-        if (fabs(lp.phi - M_HALFPI) < EPS10) F_ERROR;
+        if (fabs(lp.phi - M_HALFPI) < EPS10) {
+            proj_errno_set(P, PJD_ERR_TOLERANCE_CONDITION);
+            return xy;
+        }
         xy.x = (xy.y = (M_HALFPI + lp.phi)) * sin(lp.lam);
         xy.y *= coslam;
         break;
@@ -151,7 +176,7 @@ oblcon:
 static LP e_guam_inv(XY xy, PJ *P) { /* Guam elliptical */
     LP lp = {0.0,0.0};
     struct pj_opaque *Q = P->opaque;
-    double x2, t;
+    double x2, t = 0.0;
     int i;
 
     x2 = 0.5 * xy.x * xy.x;
@@ -204,7 +229,10 @@ static LP s_inverse (XY xy, PJ *P) {           /* Spheroidal, inverse */
     double cosc, c_rh, sinc;
 
     if ((c_rh = hypot(xy.x, xy.y)) > M_PI) {
-        if (c_rh - EPS10 > M_PI) I_ERROR;
+        if (c_rh - EPS10 > M_PI) {
+            proj_errno_set(P, PJD_ERR_TOLERANCE_CONDITION);
+            return lp;
+        }
         c_rh = M_PI;
     } else if (c_rh < EPS10) {
         lp.phi = P->phi0;
@@ -236,33 +264,15 @@ static LP s_inverse (XY xy, PJ *P) {           /* Spheroidal, inverse */
 }
 
 
-static void *freeup_new (PJ *P) {                       /* Destructor */
-    if (0==P)
-        return 0;
-    if (0==P->opaque)
-        return pj_dealloc (P);
-
-    if (P->opaque->en)
-        pj_dealloc(P->opaque->en);
-    pj_dealloc (P->opaque);
-    return pj_dealloc(P);
-}
-
-
-static void freeup (PJ *P) {
-    freeup_new (P);
-    return;
-}
-
-
 PJ *PROJECTION(aeqd) {
     struct pj_opaque *Q = pj_calloc (1, sizeof (struct pj_opaque));
     if (0==Q)
-        return freeup_new (P);
+        return pj_default_destructor (P, ENOMEM);
     P->opaque = Q;
+    P->destructor = destructor;
 
     geod_init(&Q->g, P->a, P->es / (1 + sqrt(P->one_es)));
-    P->phi0 = pj_param(P->ctx, P->params, "rlat_0").f;
+
     if (fabs(fabs(P->phi0) - M_HALFPI) < EPS10) {
         Q->mode = P->phi0 < 0. ? S_POLE : N_POLE;
         Q->sinph0 = P->phi0 < 0. ? -1. : 1.;
@@ -276,11 +286,12 @@ PJ *PROJECTION(aeqd) {
         Q->sinph0 = sin(P->phi0);
         Q->cosph0 = cos(P->phi0);
     }
-    if (! P->es) {
+    if (P->es == 0.0) {
         P->inv = s_inverse;
         P->fwd = s_forward;
     } else {
-        if (!(Q->en = pj_enfn(P->es))) E_ERROR_0;
+        if (!(Q->en = pj_enfn(P->es)))
+            return pj_default_destructor (P, 0);
         if (pj_param(P->ctx, P->params, "bguam").i) {
             Q->M1 = pj_mlfn(P->phi0, Q->sinph0, Q->cosph0, Q->en);
             P->inv = e_guam_inv;
@@ -310,61 +321,3 @@ PJ *PROJECTION(aeqd) {
 }
 
 
-#ifndef PJ_SELFTEST
-int pj_aeqd_selftest (void) {return 0;}
-#else
-
-int pj_aeqd_selftest (void) {
-    double tolerance_lp = 1e-10;
-    double tolerance_xy = 1e-7;
-
-    char e_args[] = {"+proj=aeqd   +ellps=GRS80  +lat_1=0.5 +lat_2=2"};
-    char s_args[] = {"+proj=aeqd   +a=6400000    +lat_1=0.5 +lat_2=2"};
-
-    LP fwd_in[] = {
-        { 2, 1},
-        { 2,-1},
-        {-2, 1},
-        {-2,-1}
-    };
-
-    XY e_fwd_expect[] = {
-        { 222616.522190051648,  110596.996549550197},
-        { 222616.522190051648, -110596.996549550211},
-        {-222616.522190051648,  110596.996549550197},
-        {-222616.522190051648, -110596.996549550211},
-    };
-
-    XY s_fwd_expect[] = {
-        { 223379.456047271,  111723.757570854126},
-        { 223379.456047271, -111723.757570854126},
-        {-223379.456047271,  111723.757570854126},
-        {-223379.456047271, -111723.757570854126},
-    };
-
-    XY inv_in[] = {
-        { 200, 100},
-        { 200,-100},
-        {-200, 100},
-        {-200,-100}
-    };
-
-    LP e_inv_expect[] = {
-        { 0.00179663056838724787,  0.000904369476930248902},
-        { 0.00179663056838724787, -0.000904369476930248469},
-        {-0.00179663056838724787,  0.000904369476930248902},
-        {-0.00179663056838724787, -0.000904369476930248469},
-    };
-
-    LP s_inv_expect[] = {
-        { 0.00179049310992953335,  0.000895246554746200623},
-        { 0.00179049310992953335, -0.000895246554746200623},
-        {-0.00179049310992953335,  0.000895246554746200623},
-        {-0.00179049310992953335, -0.000895246554746200623},
-    };
-
-    return pj_generic_selftest (e_args, s_args, tolerance_xy, tolerance_lp, 4, 4, fwd_in, e_fwd_expect, s_fwd_expect, inv_in, e_inv_expect, s_inv_expect);
-}
-
-
-#endif

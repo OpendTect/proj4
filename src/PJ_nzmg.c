@@ -26,7 +26,10 @@
  * DEALINGS IN THE SOFTWARE.
  *****************************************************************************/
 #define PJ_LIB__
-#include <projects.h>
+
+#include <math.h>
+
+#include "projects.h"
 
 PROJ_HEAD(nzmg, "New Zealand Map Grid") "\n\tfixed Earth";
 
@@ -34,7 +37,7 @@ PROJ_HEAD(nzmg, "New Zealand Map Grid") "\n\tfixed Earth";
 #define SEC5_TO_RAD 0.4848136811095359935899141023
 #define RAD_TO_SEC5 2.062648062470963551564733573
 
-static COMPLEX bf[] = {
+static const COMPLEX bf[] = {
     { .7557853228, 0.0},
     { .249204646,  0.003371507},
     {-.001541739,  0.041058560},
@@ -42,12 +45,12 @@ static COMPLEX bf[] = {
     {-.26623489,  -0.36249218},
     {-.6870983,   -1.1651967} };
 
-static double tphi[] = { 1.5627014243, .5185406398, -.03333098,
-                         -.1052906,   -.0368594,     .007317,
-                          .01220,      .00394,      -.0013 };
+static const double tphi[] = { 1.5627014243, .5185406398, -.03333098,
+                               -.1052906,   -.0368594,     .007317,
+                                .01220,      .00394,      -.0013 };
 
-static double tpsi[] = { .6399175073, -.1358797613, .063294409, -.02526853, .0117879,
-                        -.0055161,     .0026906,   -.001333,     .00067,   -.00034 };
+static const double tpsi[] = { .6399175073, -.1358797613, .063294409, -.02526853, .0117879,
+                              -.0055161,     .0026906,   -.001333,     .00067,   -.00034 };
 
 #define Nbf 5
 #define Ntpsi 9
@@ -57,7 +60,7 @@ static double tpsi[] = { .6399175073, -.1358797613, .063294409, -.02526853, .011
 static XY e_forward (LP lp, PJ *P) {          /* Ellipsoidal, forward */
     XY xy = {0.0,0.0};
     COMPLEX p;
-    double *C;
+    const double *C;
     int i;
 
     lp.phi = (lp.phi - P->phi0) * RAD_TO_SEC5;
@@ -77,7 +80,8 @@ static LP e_inverse (XY xy, PJ *P) {          /* Ellipsoidal, inverse */
     LP lp = {0.0,0.0};
     int nn, i;
     COMPLEX p, f, fp, dp;
-    double den, *C;
+    double den;
+    const double *C;
 
     p.r = xy.y;
     p.i = xy.x;
@@ -103,19 +107,6 @@ static LP e_inverse (XY xy, PJ *P) {          /* Ellipsoidal, inverse */
 }
 
 
-static void *freeup_new (PJ *P) {                       /* Destructor */
-    if (0==P)
-        return 0;
-
-    return pj_dealloc(P);
-}
-
-static void freeup (PJ *P) {
-    freeup_new (P);
-    return;
-}
-
-
 PJ *PROJECTION(nzmg) {
     /* force to International major axis */
     P->ra = 1. / (P->a = 6378388.0);
@@ -130,48 +121,3 @@ PJ *PROJECTION(nzmg) {
 
     return P;
 }
-
-
-#ifndef PJ_SELFTEST
-int pj_nzmg_selftest (void) {return 0;}
-#else
-
-int pj_nzmg_selftest (void) {
-    double tolerance_lp = 1e-10;
-    double tolerance_xy = 1e-7;
-
-    char e_args[] = {"+proj=nzmg   +ellps=GRS80  +lat_1=0.5 +lat_2=2"};
-
-    LP fwd_in[] = {
-        { 2, 1},
-        { 2,-1},
-        {-2, 1},
-        {-2,-1}
-    };
-
-    XY e_fwd_expect[] = {
-        {3352675144.74742508,  -7043205391.10024357},
-        {3691989502.77930641,  -6729069415.33210468},
-        {4099000768.45323849,  -7863208779.66724873},
-        {4466166927.36997604,  -7502531736.62860489},
-    };
-
-    XY inv_in[] = {
-        { 200000, 100000},
-        { 200000,-100000},
-        {-200000, 100000},
-        {-200000,-100000}
-    };
-
-    LP e_inv_expect[] = {
-        {175.48208682711271,  -69.4226921826331846},
-        {175.756819472543611, -69.5335710883796168},
-        {134.605119233460016, -61.4599957106629091},
-        {134.333684315954827, -61.6215536756024349},
-    };
-
-    return pj_generic_selftest (e_args, 0, tolerance_xy, tolerance_lp, 4, 4, fwd_in, e_fwd_expect, 0, inv_in, e_inv_expect, 0);
-}
-
-
-#endif

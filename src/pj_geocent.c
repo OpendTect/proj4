@@ -28,7 +28,7 @@
  *****************************************************************************/
 
 #define PJ_LIB__
-#include <projects.h>
+#include "projects.h"
 
 PROJ_HEAD(geocent, "Geocentric")  "\n\t";
 
@@ -48,72 +48,15 @@ static LP inverse(XY xy, PJ *P) {
     return lp;
 }
 
-
-static void *freeup_new (PJ *P) {
-    if (0==P)
-        return 0;
-
-    return pj_dealloc(P);
-}
-
-static void freeup (PJ *P) {
-    freeup_new (P);
-    return;
-}
-
-PJ *PROJECTION(geocent) {
+PJ *CONVERSION (geocent, 0) {
     P->is_geocent = 1;
     P->x0 = 0.0;
     P->y0 = 0.0;
     P->inv = inverse;
     P->fwd = forward;
+    P->left = PJ_IO_UNITS_ANGULAR;
+    P->right = PJ_IO_UNITS_CARTESIAN;
 
     return P;
 }
-
-
-#ifndef PJ_SELFTEST
-int pj_geocent_selftest (void) {return 0;}
-#else
-
-int pj_geocent_selftest (void) {
-
-    double tolerance_lp = 1e-10;
-    double tolerance_xy = 1e-7;
-
-    char e_args[] = {"+proj=geocent   +ellps=GRS80  +lat_1=0.5 +lat_2=2"};
-    char s_args[] = {"+proj=geocent   +a=6400000    +lat_1=0.5 +lat_2=2"};
-
-    LP fwd_in[] = {
-        { 2, 1},
-        { 2,-1},
-        {-2, 1},
-        {-2,-1}
-    };
-
-    XY e_fwd_expect[] = {
-        { 222638.98158654713,  111319.49079327357},
-        { 222638.98158654713, -111319.49079327357},
-        {-222638.98158654713,  111319.49079327357},
-        {-222638.98158654713, -111319.49079327357},
-    };
-
-    XY inv_in[] = {
-        { 200, 100},
-        { 200,-100},
-        {-200, 100},
-        {-200,-100}
-    };
-
-    LP e_inv_expect[] = {
-        { 0.0017966305682390426,  0.00089831528411952132},
-        { 0.0017966305682390426, -0.00089831528411952132},
-        {-0.0017966305682390426,  0.00089831528411952132},
-        {-0.0017966305682390426, -0.00089831528411952132},
-    };
-
-    return pj_generic_selftest (e_args, s_args, tolerance_xy, tolerance_lp, 4, 4, fwd_in, e_fwd_expect, 0, inv_in, e_inv_expect, 0);
-}
-
-#endif
 

@@ -6,15 +6,20 @@
 #include <errno.h>
 #include "emess.h"
 #ifndef COEF_LINE_MAX
-#define COEF_LINE_MAX 60
+#define COEF_LINE_MAX 50
 #endif
-	void
-gen_cheb(int inverse, projUV (*proj)(projUV), char *s, PJ *P, int iargc, char **iargv) {
+
+/* FIXME: put the declaration in a header. Also used in proj.c */
+void gen_cheb(int inverse, projUV (*proj)(projUV), char *s, PJ *P,
+              int iargc, char **iargv);
+extern void p_series(Tseries *, FILE *, char *);
+
+void gen_cheb(int inverse, projUV (*proj)(projUV), char *s, PJ *P,
+              int iargc, char **iargv) {
 	int NU = 15, NV = 15, res = -1, errin = 0, pwr;
 	char *arg, fmt[15];
 	projUV low, upp, resid;
 	Tseries *F;
-	extern void p_series(Tseries *, FILE *, char *);
 	double (*input)(const char *, char **);
 
 	input = inverse ? strtod : dmstor;
@@ -38,7 +43,7 @@ gen_cheb(int inverse, projUV (*proj)(projUV), char *s, PJ *P, int iargc, char **
 			if (*arg != '+') {
 				if (!n) { putchar('#'); ++n; }
 				(void)printf(" %s%n",arg, &L);
-				if ((n += L) > 50) { putchar('\n'); n = 0; }
+				if ((n += L) > COEF_LINE_MAX) { putchar('\n'); n = 0; }
 			}
 		}
 		if (n) putchar('\n');

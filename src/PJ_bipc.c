@@ -1,5 +1,10 @@
 #define PJ_LIB__
-#include <projects.h>
+#include <errno.h>
+#include <math.h>
+
+#include "proj.h"
+#include "projects.h"
+#include "proj_math.h"
 
 PROJ_HEAD(bipc, "Bipolar conic of western hemisphere") "\n\tConic Sph.";
 
@@ -51,7 +56,10 @@ static XY s_forward (LP lp, PJ *P) {           /* Spheroidal, forward */
         sdlam = sin(sdlam);
         z = S20 * sphi + C20 * cphi * cdlam;
         if (fabs(z) > 1.) {
-            if (fabs(z) > ONEEPS) F_ERROR
+            if (fabs(z) > ONEEPS) {
+                proj_errno_set(P, PJD_ERR_TOLERANCE_CONDITION);
+                return xy;
+            }
             else z = z < 0. ? -1. : 1.;
         } else
             z = acos(z);
@@ -62,19 +70,31 @@ static XY s_forward (LP lp, PJ *P) {           /* Spheroidal, forward */
     } else {
         z = S45 * (sphi + cphi * cdlam);
         if (fabs(z) > 1.) {
-            if (fabs(z) > ONEEPS) F_ERROR
+            if (fabs(z) > ONEEPS) {
+                proj_errno_set(P, PJD_ERR_TOLERANCE_CONDITION);
+                return xy;
+            }
             else z = z < 0. ? -1. : 1.;
         } else
             z = acos(z);
         Av = Azba;
         xy.y = -rhoc;
     }
-    if (z < 0.) F_ERROR;
+    if (z < 0.) {
+        proj_errno_set(P, PJD_ERR_TOLERANCE_CONDITION);
+        return xy;
+    }
     r = F * (t = pow(tan(.5 * z), n));
-    if ((al = .5 * (R104 - z)) < 0.) F_ERROR;
+    if ((al = .5 * (R104 - z)) < 0.) {
+        proj_errno_set(P, PJD_ERR_TOLERANCE_CONDITION);
+        return xy;
+    }
     al = (t + pow(al, n)) / T;
     if (fabs(al) > 1.) {
-        if (fabs(al) > ONEEPS) F_ERROR
+        if (fabs(al) > ONEEPS) {
+            proj_errno_set(P, PJD_ERR_TOLERANCE_CONDITION);
+            return xy;
+        }
         else al = al < 0. ? -1. : 1.;
     } else
         al = acos(al);
@@ -94,7 +114,7 @@ static XY s_forward (LP lp, PJ *P) {           /* Spheroidal, forward */
 static LP s_inverse (XY xy, PJ *P) {           /* Spheroidal, inverse */
     LP lp = {0.0,0.0};
     struct pj_opaque *Q = P->opaque;
-    double t, r, rp, rl, al, z, fAz, Az, s, c, Av;
+    double t, r, rp, rl, al, z = 0.0, fAz, Az, s, c, Av;
     int neg, i;
 
     if (Q->noskew) {
@@ -125,7 +145,10 @@ static LP s_inverse (XY xy, PJ *P) {           /* Spheroidal, inverse */
             break;
         rl = r;
     }
-    if (! i) I_ERROR;
+    if (! i) {
+        proj_errno_set(P, PJD_ERR_TOLERANCE_CONDITION);
+        return lp;
+    }
     Az = Av - Az / n;
     lp.phi = asin(s * cos(z) + c * sin(z) * cos(Az));
     lp.lam = atan2(sin(Az), c / tan(z) - s * cos(Az));
@@ -137,23 +160,10 @@ static LP s_inverse (XY xy, PJ *P) {           /* Spheroidal, inverse */
 }
 
 
-static void *freeup_new (PJ *P) {                        /* Destructor */
-    if (0==P)
-        return 0;
-    pj_dealloc (P->opaque);
-    return pj_dealloc(P);
-}
-
-static void freeup (PJ *P) {
-    freeup_new (P);
-    return;
-}
-
-
 PJ *PROJECTION(bipc) {
     struct pj_opaque *Q = pj_calloc (1, sizeof (struct pj_opaque));
     if (0==Q)
-        return freeup_new (P);
+        return pj_default_destructor (P, ENOMEM);
     P->opaque = Q;
 
     Q->noskew = pj_param(P->ctx, P->params, "bns").i;
@@ -162,63 +172,3 @@ PJ *PROJECTION(bipc) {
     P->es = 0.;
     return P;
 }
-
-
-#ifndef PJ_SELFTEST
-int pj_bipc_selftest (void) {return 0;}
-#else
-
-int pj_bipc_selftest (void) {
-    double tolerance_lp = 1e-10;
-    double tolerance_xy = 1e-7;
-
-    char e_args[] = {"+proj=bipc   +ellps=GRS80  +lat_1=0.5 +lat_2=2"};
-    char s_args[] = {"+proj=bipc   +a=6400000    +lat_1=0.5 +lat_2=2"};
-
-    LP fwd_in[] = {
-        { 2, 1},
-        { 2,-1},
-        {-2, 1},
-        {-2,-1}
-    };
-
-    XY e_fwd_expect[] = {
-        {2452160.2177257561,  -14548450.759654747},
-        {2447915.213725341,  -14763427.21279873},
-        {2021695.5229349085,  -14540413.695283702},
-        {2018090.5030046992,  -14755620.651414108},
-    };
-
-    XY s_fwd_expect[] = {
-        {2460565.7409749646,  -14598319.9893308},
-        {2456306.1859352002,  -14814033.339502094},
-        {2028625.4978190989,  -14590255.375482792},
-        {2025008.1205891429,  -14806200.018759441},
-    };
-
-    XY inv_in[] = {
-        { 200, 100},
-        { 200,-100},
-        {-200, 100},
-        {-200,-100}
-    };
-
-    LP e_inv_expect[] = {
-        {-73.038700284978702,  17.248118466239116},
-        {-73.03730373933017,  17.249414978178777},
-        {-73.03589317304332,  17.245536403008771},
-        {-73.034496627213585,  17.246832895573739},
-    };
-
-    LP s_inv_expect[] = {
-        {-73.038693104942126,  17.248116270440242},
-        {-73.037301330021322,  17.24940835333777},
-        {-73.035895582251086,  17.245543027866539},
-        {-73.034503807150301,  17.246835091521532},
-    };
-
-    return pj_generic_selftest (e_args, s_args, tolerance_xy, tolerance_lp, 4, 4, fwd_in, e_fwd_expect, s_fwd_expect, inv_in, e_inv_expect, s_inv_expect);
-}
-
-
-#endif

@@ -6,7 +6,10 @@ and Atmospheric Sciences, Oregon State University.
 Port to PROJ.4 by Bojan Savric, 4 April 2016
 */
 #define PJ_LIB__
-#include <projects.h>
+
+#include <math.h>
+
+#include "projects.h"
 
 PROJ_HEAD(natearth2, "Natural Earth 2") "\n\tPCyl., Sph.";
 
@@ -26,6 +29,8 @@ PROJ_HEAD(natearth2, "Natural Earth 2") "\n\tPCyl., Sph.";
 #define C3 (13 * B3)
 #define EPS 1e-11
 #define MAX_Y (0.84719 * 0.535117535153096 * M_PI)
+/* Not sure at all of the appropriate number for MAX_ITER... */
+#define MAX_ITER 100
 
 
 static XY s_forward (LP lp, PJ *P) {           /* Spheroidal, forward */
@@ -46,6 +51,7 @@ static XY s_forward (LP lp, PJ *P) {           /* Spheroidal, forward */
 static LP s_inverse (XY xy, PJ *P) {           /* Spheroidal, inverse */
     LP lp = {0.0,0.0};
     double yc, tol, y2, y4, y6, f, fder;
+    int i;
     (void) P;
 
     /* make sure y is inside valid range */
@@ -57,7 +63,7 @@ static LP s_inverse (XY xy, PJ *P) {           /* Spheroidal, inverse */
 
     /* latitude */
     yc = xy.y;
-    for (;;) { /* Newton-Raphson */
+    for (i = MAX_ITER; i ; --i) { /* Newton-Raphson */
         y2 = yc * yc;
         y4 = y2 * y2;
         f = (yc * (B0 + y4 * y4 * (B1 + B2 * y2 + B3 * y4))) - xy.y;
@@ -67,6 +73,8 @@ static LP s_inverse (XY xy, PJ *P) {           /* Spheroidal, inverse */
             break;
         }
     }
+    if( i == 0 )
+        pj_ctx_set_errno( P->ctx, PJD_ERR_NON_CONVERGENT );
     lp.phi = yc;
 
     /* longitude */
@@ -80,20 +88,6 @@ static LP s_inverse (XY xy, PJ *P) {           /* Spheroidal, inverse */
 }
 
 
-static void *freeup_new (PJ *P) {                       /* Destructor */
-    if (0==P)
-        return 0;
-
-    return pj_dealloc(P);
-}
-
-
-static void freeup (PJ *P) {
-    freeup_new (P);
-    return;
-}
-
-
 PJ *PROJECTION(natearth2) {
     P->es = 0;
     P->inv = s_inverse;
@@ -101,47 +95,3 @@ PJ *PROJECTION(natearth2) {
 
     return P;
 }
-
-#ifndef PJ_SELFTEST
-int pj_natearth2_selftest (void) {return 0;}
-#else
-
-int pj_natearth2_selftest (void) {
-    double tolerance_lp = 1e-10;
-    double tolerance_xy = 1e-7;
-
-    char s_args[] = {"+proj=natearth2   +a=6400000    +lat_1=0.5 +lat_2=2"};
-
-    LP fwd_in[] = {
-        { 2, 1},
-        { 2,-1},
-        {-2, 1},
-        {-2,-1}
-    };
-
-    XY s_fwd_expect[] = {
-        { 189255.172934730799,  113022.495810907014},
-        { 189255.172934730799, -113022.495810907014},
-        {-189255.172934730799,  113022.495810907014},
-        {-189255.172934730799, -113022.495810907014},
-    };
-
-    XY inv_in[] = {
-        { 200, 100},
-        { 200,-100},
-        {-200, 100},
-        {-200,-100}
-    };
-
-    LP s_inv_expect[] = {
-        { 0.00211344929691056112,  0.000884779612080993237},
-        { 0.00211344929691056112, -0.000884779612080993237},
-        {-0.00211344929691056112,  0.000884779612080993237},
-        {-0.00211344929691056112, -0.000884779612080993237},
-    };
-
-    return pj_generic_selftest (0, s_args, tolerance_xy, tolerance_lp, 4, 4, fwd_in, 0, s_fwd_expect, inv_in, 0, s_inv_expect);
-}
-
-
-#endif

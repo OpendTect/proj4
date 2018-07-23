@@ -1,5 +1,10 @@
 #define PJ_LIB__
-#include   <projects.h>
+
+#include <errno.h>
+#include <math.h>
+
+#include "proj.h"
+#include "projects.h"
 
 struct pj_opaque {
     double qp;
@@ -44,46 +49,46 @@ static LP s_inverse (XY xy, PJ *P) {           /* Spheroidal, inverse */
         else
             lp.phi = asin(xy.y);
         lp.lam = xy.x / P->k0;
-    } else I_ERROR;
+    } else {
+        proj_errno_set(P, PJD_ERR_TOLERANCE_CONDITION);
+        return lp;
+    }
     return (lp);
 }
 
-
-static void *freeup_new (PJ *P) {                       /* Destructor */
+static void *destructor (PJ *P, int errlev) {                        /* Destructor */
     if (0==P)
         return 0;
+
     if (0==P->opaque)
-        return pj_dealloc (P);
+        return pj_default_destructor (P, errlev);
 
     pj_dealloc (P->opaque->apa);
-    pj_dealloc (P->opaque);
-    return pj_dealloc (P);
+    return pj_default_destructor (P, errlev);
 }
 
-static void freeup (PJ *P) {
-   freeup_new (P);
-    return;
-}
 
 PJ *PROJECTION(cea) {
     double t = 0.0;
     struct pj_opaque *Q = pj_calloc (1, sizeof (struct pj_opaque));
     if (0==Q)
-        return freeup_new (P);
+        return pj_default_destructor (P, ENOMEM);
     P->opaque = Q;
+    P->destructor = destructor;
 
 
     if (pj_param(P->ctx, P->params, "tlat_ts").i) {
         P->k0 = cos(t = pj_param(P->ctx, P->params, "rlat_ts").f);
-        if (P->k0 < 0.) {
-            E_ERROR(-24);
-        }
+        if (P->k0 < 0.)
+            return pj_default_destructor (P, PJD_ERR_LAT_TS_LARGER_THAN_90);
     }
-    if (P->es) {
+    if (P->es != 0.0) {
         t = sin(t);
         P->k0 /= sqrt(1. - P->es * t * t);
         P->e = sqrt(P->es);
-        if (!(Q->apa = pj_authset(P->es))) E_ERROR_0;
+        if (!(Q->apa = pj_authset(P->es)))
+            return pj_default_destructor(P, ENOMEM);
+
         Q->qp = pj_qsfn(1., P->e, P->one_es);
         P->inv = e_inverse;
         P->fwd = e_forward;
@@ -94,62 +99,3 @@ PJ *PROJECTION(cea) {
 
     return P;
 }
-
-
-#ifndef PJ_SELFTEST
-int pj_cea_selftest (void) {return 0;}
-#else
-
-int pj_cea_selftest (void) {
-    double tolerance_lp = 1e-10;
-    double tolerance_xy = 1e-7;
-
-    char e_args[] = {"+proj=cea   +ellps=GRS80  +lat_1=0.5 +lat_2=2"};
-    char s_args[] = {"+proj=cea   +a=6400000    +lat_1=0.5 +lat_2=2"};
-
-    LP fwd_in[] = {
-        { 2, 1},
-        { 2,-1},
-        {-2, 1},
-        {-2,-1}
-    };
-
-    XY e_fwd_expect[] = {
-        { 222638.981586547132,  110568.812396267356},
-        { 222638.981586547132, -110568.812396265886},
-        {-222638.981586547132,  110568.812396267356},
-        {-222638.981586547132, -110568.812396265886},
-    };
-
-    XY s_fwd_expect[] = {
-        { 223402.144255274179,  111695.401198614476},
-        { 223402.144255274179, -111695.401198614476},
-        {-223402.144255274179,  111695.401198614476},
-        {-223402.144255274179, -111695.401198614476},
-    };
-
-    XY inv_in[] = {
-        { 200, 100},
-        { 200,-100},
-        {-200, 100},
-        {-200,-100}
-    };
-
-    LP e_inv_expect[] = {
-        { 0.00179663056823904264,  0.000904369476105564289},
-        { 0.00179663056823904264, -0.000904369476105564289},
-        {-0.00179663056823904264,  0.000904369476105564289},
-        {-0.00179663056823904264, -0.000904369476105564289},
-    };
-
-    LP s_inv_expect[] = {
-        { 0.00179049310978382265,  0.000895246554928338998},
-        { 0.00179049310978382265, -0.000895246554928338998},
-        {-0.00179049310978382265,  0.000895246554928338998},
-        {-0.00179049310978382265, -0.000895246554928338998},
-    };
-
-    return pj_generic_selftest (e_args, s_args, tolerance_xy, tolerance_lp, 4, 4, fwd_in, e_fwd_expect, s_fwd_expect, inv_in, e_inv_expect, s_inv_expect);
-}
-
-#endif

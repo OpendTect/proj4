@@ -1,6 +1,6 @@
 .\" @(#)geodesic.3
-.nr LL 7.0i
-.TH GEODESIC 3 "2016/02/16 Rel. 4.9.3"
+.\"
+.TH GEODESIC 3 "2018/06/01 Rel. 5.1.0"
 .ad b
 .hy 1
 .SH NAME
@@ -53,7 +53,9 @@ measure angles (latitudes, longitudes, and azimuths) in degrees, unlike
 the rest of the \fBproj\fR library, which uses radians.  The
 documentation for this library is included in geodesic.h.  A formatted
 version of the documentation is available at
-http://geographiclib.sf.net/1.46/C
+https://geographiclib.sourceforge.io/1.49/C.  Detailed documentation of
+the interface is given at
+https://geographiclib.sourceforge.io/1.49/C/geodesic_8h.html.
 .SH EXAMPLE
 The following program reads in lines with the coordinates for two points
 in decimal degrees (\fIlat1\fR, \fIlon1\fR, \fIlat2\fR, \fIlon2\fR) and
@@ -87,11 +89,13 @@ libproj.a \- library of projections and support procedures
 .SH SEE ALSO
 Full online documentation for \fBgeodesic(3)\fR,
 .br
-http://geographiclib.sf.net/1.46/C
+https://geographiclib.sourceforge.io/1.49/C
+.br
+https://geographiclib.sourceforge.io/1.49/C/geodesic_8h.html
 .PP
 .B geod(1)
 .PP
-\fBGeographicLib\fR, http://geographiclib.sf.net
+\fBGeographicLib\fR, https://geographiclib.sourceforge.io
 .PP
 The \fBGeodesicExact\fR class in GeographicLib solves the geodesic
 problems in terms of elliptic integrals; the results are accurate for
@@ -101,13 +105,13 @@ C. F. F. Karney, \fIAlgorithms for Geodesics\fR,
 .br
 J. Geodesy \fB87\fR, 43-55 (2013);
 .br
-DOI: http://dx.doi.org/10.1007/s00190-012-0578-z
+DOI: https://doi.org/10.1007/s00190-012-0578-z
 .br
-http://geographiclib.sf.net/geod-addenda.html
+https://geographiclib.sourceforge.io/geod-addenda.html
 .PP
 \fIA geodesic bibliography\fR,
 .br
-http://geographiclib.sf.net/geodesic-papers/biblio.html
+https://geographiclib.sourceforge.io/geodesic-papers/biblio.html
 .PP
 The Wikipedia page, \fIGeodesics on an ellipsoid\fR,
 .br

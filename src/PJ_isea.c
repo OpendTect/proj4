@@ -3,24 +3,48 @@
  * and is in the public domain.
  */
 
+#include <errno.h>
 #include <math.h>
+#include <float.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <float.h>
+#include <string.h>
 
-#ifndef M_PI
-#  define M_PI 3.14159265358979323846
-#endif
+#define PJ_LIB__
+#include "proj_internal.h"
+#include "proj_math.h"
+#include "proj.h"
+#include "projects.h"
 
-/*
- * Proj 4 provides its own entry points into
- * the code, so none of the library functions
- * need to be global
- */
-#define ISEA_STATIC static
-#ifndef ISEA_STATIC
-#define ISEA_STATIC
-#endif
+#define DEG36 0.62831853071795864768
+#define DEG72 1.25663706143591729537
+#define DEG90 M_PI_2
+#define DEG108 1.88495559215387594306
+#define DEG120 2.09439510239319549229
+#define DEG144 2.51327412287183459075
+#define DEG180 M_PI
+
+/* sqrt(5)/M_PI */
+#define ISEA_SCALE 0.8301572857837594396028083
+
+/* 26.565051177 degrees */
+#define V_LAT 0.46364760899944494524
+
+/* 52.62263186 */
+#define E_RAD 0.91843818702186776133
+
+/* 10.81231696 */
+#define F_RAD 0.18871053072122403508
+
+/* R tan(g) sin(60) */
+#define TABLE_G 0.6615845383
+
+/* H = 0.25 R tan g = */
+#define TABLE_H 0.1909830056
+
+/* in radians */
+#define ISEA_STD_LAT 1.01722196792335072101
+#define ISEA_STD_LON .19634954084936207740
 
 struct hex {
         int iso;
@@ -28,9 +52,8 @@ struct hex {
 };
 
 /* y *must* be positive down as the xy /iso conversion assumes this */
-ISEA_STATIC
-int hex_xy(struct hex *h) {
-    if (!h->iso) return 1;
+static void hex_xy(struct hex *h) {
+    if (!h->iso) return;
     if (h->x >= 0) {
         h->y = -h->y - (h->x+1)/2;
     } else {
@@ -38,13 +61,10 @@ int hex_xy(struct hex *h) {
         h->y = -h->y - h->x/2;
     }
     h->iso = 0;
-
-    return 1;
 }
 
-ISEA_STATIC
-int hex_iso(struct hex *h) {
-    if (h->iso) return 1;
+static void hex_iso(struct hex *h) {
+    if (h->iso) return;
 
     if (h->x >= 0) {
         h->y = (-h->y - (h->x+1)/2);
@@ -55,15 +75,12 @@ int hex_iso(struct hex *h) {
 
     h->z = -h->x - h->y;
     h->iso = 1;
-    return 1;
 }
 
-ISEA_STATIC
-int hexbin2(double width, double x, double y,
-                int *i, int *j) {
+static void hexbin2(double width, double x, double y, int *i, int *j) {
     double z, rx, ry, rz;
     double abs_dx, abs_dy, abs_dz;
-    int ix, iy, iz, s;
+    long ix, iy, iz, s;
     struct hex h;
 
     x = x / cos(30 * M_PI / 180.0); /* rotated X coord */
@@ -75,9 +92,12 @@ int hexbin2(double width, double x, double y,
 
     z = -x - y;
 
-    ix = rx = floor(x + 0.5);
-    iy = ry = floor(y + 0.5);
-    iz = rz = floor(z + 0.5);
+    rx = floor(x + 0.5);
+    ix = lround(rx);
+    ry = floor(y + 0.5);
+    iy = lround(ry);
+    rz = floor(z + 0.5);
+    iz = lround(rz);
 
     s = ix + iy + iz;
 
@@ -102,11 +122,7 @@ int hexbin2(double width, double x, double y,
     hex_xy(&h);
     *i = h.x;
     *j = h.y;
-        return ix * 100 + iy;
 }
-#ifndef ISEA_STATIC
-#define ISEA_STATIC
-#endif
 
 enum isea_poly { ISEA_NONE, ISEA_ICOSAHEDRON = 20 };
 enum isea_topology { ISEA_HEXAGON=6, ISEA_TRIANGLE=3, ISEA_DIAMOND=4 };
@@ -136,12 +152,6 @@ struct isea_geo {
     double lon, lat;
 };
 
-struct isea_address {
-    int type; /* enum isea_address_form */
-    int number;
-    double  x,y; /* or i,j or lon,lat depending on type */
-};
-
 /* ENDINC */
 
 enum snyder_polyhedron {
@@ -152,12 +162,13 @@ enum snyder_polyhedron {
 };
 
 struct snyder_constants {
-    double          g, G, theta, ea_w, ea_a, ea_b, g_w, g_a, g_b;
+    double          g, G, theta;
+    /* cppcheck-suppress unusedStructMember */
+    double ea_w, ea_a, ea_b, g_w, g_a, g_b;
 };
 
 /* TODO put these in radians to avoid a later conversion */
-ISEA_STATIC
-struct snyder_constants constants[] = {
+static const struct snyder_constants constants[] = {
     {23.80018260, 62.15458023, 60.0, 3.75, 1.033, 0.968, 5.09, 1.195, 1.0},
     {20.07675127, 55.69063953, 54.0, 2.65, 1.030, 0.983, 3.59, 1.141, 1.027},
     {0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0},
@@ -167,28 +178,7 @@ struct snyder_constants constants[] = {
     {37.37736814, 36.0, 30.0, 17.27, 1.163, 0.860, 13.14, 1.584, 1.0},
 };
 
-#define E 52.62263186
-#define F 10.81231696
-
-#define DEG60 1.04719755119659774614
-#define DEG120 2.09439510239319549229
-#define DEG72 1.25663706143591729537
-#define DEG90 1.57079632679489661922
-#define DEG144 2.51327412287183459075
-#define DEG36 0.62831853071795864768
-#define DEG108 1.88495559215387594306
-#define DEG180 M_PI
-/* sqrt(5)/M_PI */
-#define ISEA_SCALE 0.8301572857837594396028083
-
-/* 26.565051177 degrees */
-#define V_LAT 0.46364760899944494524
-
-#define RAD2DEG (180.0/M_PI)
-#define DEG2RAD (M_PI/180.0)
-
-ISEA_STATIC
-struct isea_geo vertex[] = {
+static struct isea_geo vertex[] = {
     {0.0, DEG90},
     {DEG180, V_LAT},
     {-DEG108, V_LAT},
@@ -205,16 +195,10 @@ struct isea_geo vertex[] = {
 
 /* TODO make an isea_pt array of the vertices as well */
 
-static int      tri_v1[] = {0, 0, 0, 0, 0, 0, 6, 7, 8, 9, 10, 2, 3, 4, 5, 1, 11, 11, 11, 11, 11};
-
-/* 52.62263186 */
-#define E_RAD 0.91843818702186776133
-
-/* 10.81231696 */
-#define F_RAD 0.18871053072122403508
+static int tri_v1[] = {0, 0, 0, 0, 0, 0, 6, 7, 8, 9, 10, 2, 3, 4, 5, 1, 11, 11, 11, 11, 11};
 
 /* triangle Centers */
-struct isea_geo icostriangles[] = {
+static const struct isea_geo icostriangles[] = {
     {0.0, 0.0},
     {-DEG144, E_RAD},
     {-DEG72, E_RAD},
@@ -238,8 +222,7 @@ struct isea_geo icostriangles[] = {
     {DEG180, -E_RAD},
 };
 
-static double
-az_adjustment(int triangle)
+static double az_adjustment(int triangle)
 {
     double          adj;
 
@@ -257,20 +240,10 @@ az_adjustment(int triangle)
     return adj;
 }
 
-/* R tan(g) sin(60) */
-#define TABLE_G 0.6615845383
-
-/* H = 0.25 R tan g = */
-#define TABLE_H 0.1909830056
-
-#define RPRIME 0.91038328153090290025
-
-ISEA_STATIC
-struct isea_pt
-isea_triangle_xy(int triangle)
+static struct isea_pt isea_triangle_xy(int triangle)
 {
     struct isea_pt  c;
-    double Rprime = 0.91038328153090290025;
+    const double Rprime = 0.91038328153090290025;
 
     triangle = (triangle - 1) % 20;
 
@@ -302,8 +275,8 @@ isea_triangle_xy(int triangle)
 }
 
 /* snyder eq 14 */
-static double
-sph_azimuth(double f_lon, double f_lat, double t_lon, double t_lat)
+static double sph_azimuth(double f_lon, double f_lat,
+                          double t_lon, double t_lat)
 {
     double          az;
 
@@ -314,10 +287,14 @@ sph_azimuth(double f_lon, double f_lat, double t_lon, double t_lat)
     return az;
 }
 
+#ifdef _MSC_VER
+#pragma warning( push )
+/* disable unreachable code warning for return 0 */
+#pragma warning( disable : 4702 )
+#endif
+
 /* coord needs to be in radians */
-ISEA_STATIC
-int
-isea_snyder_forward(struct isea_geo * ll, struct isea_pt * out)
+static int isea_snyder_forward(struct isea_geo * ll, struct isea_pt * out)
 {
     int             i;
 
@@ -358,9 +335,9 @@ isea_snyder_forward(struct isea_geo * ll, struct isea_pt * out)
 
     /* TODO put these constants in as radians to begin with */
     c = constants[SNYDER_POLY_ICOSAHEDRON];
-    theta = c.theta * DEG2RAD;
-    g = c.g * DEG2RAD;
-    G = c.G * DEG2RAD;
+    theta = PJ_TORAD(c.theta);
+    g = PJ_TORAD(c.g);
+    G = PJ_TORAD(c.G);
 
     for (i = 1; i <= 20; i++) {
         double          z;
@@ -480,23 +457,25 @@ isea_snyder_forward(struct isea_geo * ll, struct isea_pt * out)
      */
 
     fprintf(stderr, "impossible transform: %f %f is not on any triangle\n",
-        ll->lon * RAD2DEG, ll->lat * RAD2DEG);
+            PJ_TODEG(ll->lon), PJ_TODEG(ll->lat));
 
     exit(EXIT_FAILURE);
 
     /* not reached */
-    return 0;       /* supresses a warning */
+    return 0;       /* suppresses a warning */
 }
 
+#ifdef _MSC_VER
+#pragma warning( pop )
+#endif
+
 /*
- * return the new coordinates of any point in orginal coordinate system.
- * Define a point (newNPold) in orginal coordinate system as the North Pole in
+ * return the new coordinates of any point in original coordinate system.
+ * Define a point (newNPold) in original coordinate system as the North Pole in
  * new coordinate system, and the great circle connect the original and new
  * North Pole as the lon0 longitude in new coordinate system, given any point
- * in orginal coordinate system, this function return the new coordinates.
+ * in original coordinate system, this function return the new coordinates.
  */
-
-#define PRECISION 0.0000000000005
 
 /* formula from Snyder, Map Projections: A working manual, p31 */
 /*
@@ -505,9 +484,7 @@ isea_snyder_forward(struct isea_geo * ll, struct isea_pt * out)
  *
  * TODO take a result pointer
  */
-ISEA_STATIC
-struct isea_geo
-snyder_ctran(struct isea_geo * np, struct isea_geo * pt)
+static struct isea_geo snyder_ctran(struct isea_geo * np, struct isea_geo * pt)
 {
     struct isea_geo npt;
     double          alpha, phi, lambda, lambda0, beta, lambdap, phip;
@@ -551,9 +528,8 @@ snyder_ctran(struct isea_geo * np, struct isea_geo * pt)
     return npt;
 }
 
-ISEA_STATIC
-struct isea_geo
-isea_ctran(struct isea_geo * np, struct isea_geo * pt, double lon0)
+static struct isea_geo isea_ctran(struct isea_geo * np, struct isea_geo * pt,
+                                  double lon0)
 {
     struct isea_geo npt;
 
@@ -578,15 +554,9 @@ isea_ctran(struct isea_geo * np, struct isea_geo * pt, double lon0)
     return npt;
 }
 
-/* in radians */
-#define ISEA_STD_LAT 1.01722196792335072101
-#define ISEA_STD_LON .19634954084936207740
-
 /* fuller's at 5.2454 west, 2.3009 N, adjacent at 7.46658 deg */
 
-ISEA_STATIC
-int
-isea_grid_init(struct isea_dgg * g)
+static int isea_grid_init(struct isea_dgg * g)
 {
     if (!g)
         return 0;
@@ -603,34 +573,26 @@ isea_grid_init(struct isea_dgg * g)
     return 1;
 }
 
-ISEA_STATIC
-int
-isea_orient_isea(struct isea_dgg * g)
+static void isea_orient_isea(struct isea_dgg * g)
 {
     if (!g)
-        return 0;
+        return;
     g->o_lat = ISEA_STD_LAT;
     g->o_lon = ISEA_STD_LON;
     g->o_az = 0.0;
-    return 1;
 }
 
-ISEA_STATIC
-int
-isea_orient_pole(struct isea_dgg * g)
+static void isea_orient_pole(struct isea_dgg * g)
 {
     if (!g)
-        return 0;
+        return;
     g->o_lat = M_PI / 2.0;
     g->o_lon = 0.0;
     g->o_az = 0;
-    return 1;
 }
 
-ISEA_STATIC
-int
-isea_transform(struct isea_dgg * g, struct isea_geo * in,
-           struct isea_pt * out)
+static int isea_transform(struct isea_dgg * g, struct isea_geo * in,
+                          struct isea_pt * out)
 {
     struct isea_geo i, pole;
     int             tri;
@@ -650,9 +612,7 @@ isea_transform(struct isea_dgg * g, struct isea_geo * in,
 
 #define DOWNTRI(tri) (((tri - 1) / 5) % 2 == 1)
 
-ISEA_STATIC
-void
-isea_rotate(struct isea_pt * pt, double degrees)
+static void isea_rotate(struct isea_pt * pt, double degrees)
 {
     double          rad;
 
@@ -669,8 +629,7 @@ isea_rotate(struct isea_pt * pt, double degrees)
     pt->y = y;
 }
 
-ISEA_STATIC
-int isea_tri_plane(int tri, struct isea_pt *pt, double radius) {
+static int isea_tri_plane(int tri, struct isea_pt *pt, double radius) {
     struct isea_pt tc; /* center of triangle */
 
     if (DOWNTRI(tri)) {
@@ -686,9 +645,7 @@ int isea_tri_plane(int tri, struct isea_pt *pt, double radius) {
 }
 
 /* convert projected triangle coords to quad xy coords, return quad number */
-ISEA_STATIC
-int
-isea_ptdd(int tri, struct isea_pt *pt) {
+static int isea_ptdd(int tri, struct isea_pt *pt) {
     int             downtri, quad;
 
     downtri = (((tri - 1) / 5) % 2 == 1);
@@ -703,15 +660,14 @@ isea_ptdd(int tri, struct isea_pt *pt) {
     return quad;
 }
 
-ISEA_STATIC
-int
-isea_dddi_ap3odd(struct isea_dgg *g, int quad, struct isea_pt *pt, struct isea_pt *di)
+static int isea_dddi_ap3odd(struct isea_dgg *g, int quad, struct isea_pt *pt,
+                            struct isea_pt *di)
 {
     struct isea_pt  v;
     double          hexwidth;
     double          sidelength; /* in hexes */
     int             d, i;
-    int             maxcoord;
+    long            maxcoord;
     struct hex      h;
 
     /* This is the number of hexes from apex to base of a triangle */
@@ -723,7 +679,7 @@ isea_dddi_ap3odd(struct isea_dgg *g, int quad, struct isea_pt *pt, struct isea_p
     /* TODO I think sidelength is always x.5, so
      * (int)sidelength * 2 + 1 might be just as good
      */
-    maxcoord = (int) (sidelength * 2.0 + 0.5);
+    maxcoord = lround((sidelength * 2.0));
 
     v = *pt;
     hexbin2(hexwidth, v.x, v.y, &h.x, &h.y);
@@ -782,12 +738,11 @@ isea_dddi_ap3odd(struct isea_dgg *g, int quad, struct isea_pt *pt, struct isea_p
     return quad;
 }
 
-ISEA_STATIC
-int
-isea_dddi(struct isea_dgg *g, int quad, struct isea_pt *pt, struct isea_pt *di) {
+static int isea_dddi(struct isea_dgg *g, int quad, struct isea_pt *pt,
+                     struct isea_pt *di) {
     struct isea_pt  v;
     double          hexwidth;
-    int             sidelength; /* in hexes */
+    long            sidelength; /* in hexes */
     struct hex      h;
 
     if (g->aperture == 3 && g->resolution % 2 != 0) {
@@ -795,7 +750,7 @@ isea_dddi(struct isea_dgg *g, int quad, struct isea_pt *pt, struct isea_pt *di) 
     }
     /* todo might want to do this as an iterated loop */
     if (g->aperture >0) {
-        sidelength = (int) (pow(g->aperture, g->resolution / 2.0) + 0.5);
+        sidelength = lround(pow(g->aperture, g->resolution / 2.0));
     } else {
         sidelength = g->resolution;
     }
@@ -855,9 +810,8 @@ isea_dddi(struct isea_dgg *g, int quad, struct isea_pt *pt, struct isea_pt *di) 
     return quad;
 }
 
-ISEA_STATIC
-int isea_ptdi(struct isea_dgg *g, int tri, struct isea_pt *pt,
-            struct isea_pt *di) {
+static int isea_ptdi(struct isea_dgg *g, int tri, struct isea_pt *pt,
+                     struct isea_pt *di) {
     struct isea_pt  v;
     int             quad;
 
@@ -868,8 +822,8 @@ int isea_ptdi(struct isea_dgg *g, int tri, struct isea_pt *pt,
 }
 
 /* q2di to seqnum */
-ISEA_STATIC
-int isea_disn(struct isea_dgg *g, int quad, struct isea_pt *di) {
+
+static int isea_disn(struct isea_dgg *g, int quad, struct isea_pt *di) {
     int             sidelength;
     int             sn, height;
     int             hexes;
@@ -879,20 +833,20 @@ int isea_disn(struct isea_dgg *g, int quad, struct isea_pt *di) {
         return g->serial;
     }
     /* hexes in a quad */
-    hexes = (int) (pow(g->aperture, g->resolution) + 0.5);
+    hexes = lround(pow(g->aperture, g->resolution));
     if (quad == 11) {
         g->serial = 1 + 10 * hexes + 1;
         return g->serial;
     }
     if (g->aperture == 3 && g->resolution % 2 == 1) {
-        height = (int) (pow(g->aperture, (g->resolution - 1) / 2.0));
+        height = lround(floor((pow(g->aperture, (g->resolution - 1) / 2.0))));
         sn = ((int) di->x) * height;
         sn += ((int) di->y) / height;
         sn += (quad - 1) * hexes;
         sn += 2;
     } else {
-        sidelength = (int) (pow(g->aperture, g->resolution / 2.0) + 0.5);
-        sn = (quad - 1) * hexes + sidelength * di->x + di->y + 2;
+        sidelength = lround((pow(g->aperture, g->resolution / 2.0)));
+        sn = lround(floor(((quad - 1) * hexes + sidelength * di->x + di->y + 2)));
     }
 
     g->serial = sn;
@@ -904,12 +858,14 @@ int isea_disn(struct isea_dgg *g, int quad, struct isea_pt *di) {
  * d' = d << 4 + q, d = d' >> 4, q = d' & 0xf
  */
 /* convert a q2di to global hex coord */
-ISEA_STATIC
-int isea_hex(struct isea_dgg *g, int tri,
-        struct isea_pt *pt, struct isea_pt *hex) {
+static int isea_hex(struct isea_dgg *g, int tri,
+                    struct isea_pt *pt, struct isea_pt *hex) {
     struct isea_pt v;
-    int sidelength;
-    int d, i, x, y, quad;
+#ifdef FIXME
+    long sidelength;
+    long d, i, x, y;
+#endif
+    int quad;
 
     quad = isea_ptdi(g, tri, pt, &v);
 
@@ -917,13 +873,13 @@ int isea_hex(struct isea_dgg *g, int tri,
     hex->y = v.y;
 
     return 1;
-
-    d = v.x;
-    i = v.y;
+#ifdef FIXME
+    d = lround(floor(v.x));
+    i = lround(floor(v.y));
 
     /* Aperture 3 odd resolutions */
     if (g->aperture == 3 && g->resolution % 2 != 0) {
-        int offset = (int)(pow(3.0, g->resolution - 1) + 0.5);
+        long offset = lround((pow(3.0, g->resolution - 1) + 0.5));
 
         d += offset * ((g->quad-1) % 5);
         i += offset * ((g->quad-1) % 5);
@@ -947,7 +903,7 @@ int isea_hex(struct isea_dgg *g, int tri,
     }
 
     /* aperture 3 even resolutions and aperture 4 */
-    sidelength = (int) (pow(g->aperture, g->resolution / 2.0) + 0.5);
+    sidelength = lround((pow(g->aperture, g->resolution / 2.0)));
     if (g->quad == 0) {
         hex->x = 0;
         hex->y = sidelength;
@@ -961,11 +917,10 @@ int isea_hex(struct isea_dgg *g, int tri,
     }
 
     return 1;
+#endif
 }
 
-ISEA_STATIC
-struct isea_pt
-isea_forward(struct isea_dgg *g, struct isea_geo *in)
+static struct isea_pt isea_forward(struct isea_dgg *g, struct isea_geo *in)
 {
     int             tri;
     struct isea_pt  out, coord;
@@ -1012,12 +967,10 @@ isea_forward(struct isea_dgg *g, struct isea_geo *in)
 
     return out;
 }
+
 /*
  * Proj 4 integration code follows
  */
-
-#define PJ_LIB__
-#include <projects.h>
 
 PROJ_HEAD(isea, "Icosahedral Snyder Equal Area") "\n\tSph";
 
@@ -1044,27 +997,11 @@ static XY s_forward (LP lp, PJ *P) {           /* Spheroidal, forward */
 }
 
 
-static void *freeup_new (PJ *P) {                       /* Destructor */
-    if (0==P)
-        return 0;
-    if (0==P->opaque)
-        return pj_dealloc (P);
-
-    pj_dealloc (P->opaque);
-    return pj_dealloc(P);
-}
-
-static void freeup (PJ *P) {
-    freeup_new (P);
-    return;
-}
-
-
 PJ *PROJECTION(isea) {
     char *opt;
     struct pj_opaque *Q = pj_calloc (1, sizeof (struct pj_opaque));
     if (0==Q)
-        return freeup_new (P);
+        return pj_default_destructor (P, ENOMEM);
     P->opaque = Q;
 
 
@@ -1082,7 +1019,7 @@ PJ *PROJECTION(isea) {
         } else if (!strcmp(opt, "pole")) {
             isea_orient_pole(&Q->dgg);
         } else {
-            E_ERROR(-34);
+            return pj_default_destructor(P, PJD_ERR_ELLIPSOID_USE_REQUIRED);
         }
     }
 
@@ -1121,7 +1058,7 @@ PJ *PROJECTION(isea) {
         }
         else {
             /* TODO verify error code.  Possibly eliminate magic */
-            E_ERROR(-34);
+            return pj_default_destructor(P, PJD_ERR_ELLIPSOID_USE_REQUIRED);
         }
     }
 
@@ -1143,34 +1080,3 @@ PJ *PROJECTION(isea) {
 
     return P;
 }
-
-
-#ifndef PJ_SELFTEST
-int pj_isea_selftest (void) {return 0;}
-#else
-
-int pj_isea_selftest (void) {
-    double tolerance_lp = 1e-10;
-    double tolerance_xy = 1e-7;
-
-    char s_args[] = {"+proj=isea   +a=6400000    +lat_1=0.5 +lat_2=2"};
-
-    LP fwd_in[] = {
-        { 2, 1},
-        { 2,-1},
-        {-2, 1},
-        {-2,-1}
-    };
-
-    XY s_fwd_expect[] = {
-        {-1097074.9480224741, 3442909.3090371834},
-        {-1097074.9482647954, 3233611.7285857084},
-        {-1575486.3536415542, 3442168.3420281881},
-        {-1575486.353880283,  3234352.6955947056},
-    };
-
-    return pj_generic_selftest (0, s_args, tolerance_xy, tolerance_lp, 4, 4, fwd_in, 0, s_fwd_expect, 0, 0, 0);
-}
-
-
-#endif

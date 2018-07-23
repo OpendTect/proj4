@@ -1,5 +1,9 @@
 #define PJ_LIB__
-#include <projects.h>
+
+#include <errno.h>
+#include <math.h>
+
+#include "projects.h"
 
 PROJ_HEAD(moll, "Mollweide") "\n\tPCyl., Sph.";
 PROJ_HEAD(wag4, "Wagner IV") "\n\tPCyl., Sph.";
@@ -51,23 +55,6 @@ static LP s_inverse (XY xy, PJ *P) {           /* Spheroidal, inverse */
 }
 
 
-static void *freeup_new (PJ *P) {                       /* Destructor */
-    if (0==P)
-        return 0;
-    if (0==P->opaque)
-        return pj_dealloc (P);
-
-    pj_dealloc (P->opaque);
-    return pj_dealloc(P);
-}
-
-
-static void freeup (PJ *P) {
-    freeup_new (P);
-    return;
-}
-
-
 static PJ * setup(PJ *P, double p) {
     struct pj_opaque *Q = P->opaque;
     double r, sp, p2 = p + p;
@@ -89,7 +76,7 @@ static PJ * setup(PJ *P, double p) {
 PJ *PROJECTION(moll) {
     struct pj_opaque *Q = pj_calloc (1, sizeof (struct pj_opaque));
     if (0==Q)
-        return freeup_new (P);
+        return pj_default_destructor (P, ENOMEM);
     P->opaque = Q;
 
     return setup(P, M_HALFPI);
@@ -99,7 +86,7 @@ PJ *PROJECTION(moll) {
 PJ *PROJECTION(wag4) {
     struct pj_opaque *Q = pj_calloc (1, sizeof (struct pj_opaque));
     if (0==Q)
-        return freeup_new (P);
+        return pj_default_destructor (P, ENOMEM);
     P->opaque = Q;
 
     return setup(P, M_PI/3.);
@@ -108,7 +95,7 @@ PJ *PROJECTION(wag4) {
 PJ *PROJECTION(wag5) {
     struct pj_opaque *Q = pj_calloc (1, sizeof (struct pj_opaque));
     if (0==Q)
-        return freeup_new (P);
+        return pj_default_destructor (P, ENOMEM);
     P->opaque = Q;
 
     P->es = 0;
@@ -121,139 +108,3 @@ PJ *PROJECTION(wag5) {
 
     return P;
 }
-
-
-#ifndef PJ_SELFTEST
-int pj_moll_selftest (void) {return 0;}
-#else
-
-int pj_moll_selftest (void) {
-    double tolerance_lp = 1e-10;
-    double tolerance_xy = 1e-7;
-
-    char s_args[] = {"+proj=moll   +a=6400000    +lat_1=0.5 +lat_2=2"};
-
-    LP fwd_in[] = {
-        { 2, 1},
-        { 2,-1},
-        {-2, 1},
-        {-2,-1}
-    };
-
-    XY s_fwd_expect[] = {
-        {201113.698641813244,  124066.283433859542},
-        {201113.698641813244,  -124066.283433859542},
-        {-201113.698641813244,  124066.283433859542},
-        {-201113.698641813244,  -124066.283433859542},
-    };
-
-    XY inv_in[] = {
-        { 200, 100},
-        { 200,-100},
-        {-200, 100},
-        {-200,-100}
-    };
-
-    LP s_inv_expect[] = {
-        {0.00198873782220854774,  0.000806005080362811612},
-        {0.00198873782220854774,  -0.000806005080362811612},
-        {-0.00198873782220854774,  0.000806005080362811612},
-        {-0.00198873782220854774,  -0.000806005080362811612},
-    };
-
-    return pj_generic_selftest (0, s_args, tolerance_xy, tolerance_lp, 4, 4, fwd_in, 0, s_fwd_expect, inv_in, 0, s_inv_expect);
-}
-
-#endif
-
-
-#ifndef PJ_SELFTEST
-int pj_wag4_selftest (void) {return 0;}
-#else
-
-int pj_wag4_selftest (void) {
-    double tolerance_lp = 1e-10;
-    double tolerance_xy = 1e-7;
-
-    char s_args[] = {"+proj=wag4   +a=6400000    +lat_1=0.5 +lat_2=2"};
-
-    LP fwd_in[] = {
-        { 2, 1},
-        { 2,-1},
-        {-2, 1},
-        {-2,-1}
-    };
-
-    XY s_fwd_expect[] = {
-        { 192801.218662384286,  129416.216394802992},
-        { 192801.218662384286, -129416.216394802992},
-        {-192801.218662384286,  129416.216394802992},
-        {-192801.218662384286, -129416.216394802992},
-    };
-
-    XY inv_in[] = {
-        { 200, 100},
-        { 200,-100},
-        {-200, 100},
-        {-200,-100}
-    };
-
-    LP s_inv_expect[] = {
-        { 0.00207450259783523421, 0.000772682950537716476},
-        { 0.00207450259783523421, -0.000772682950537716476},
-        {-0.00207450259783523421,  0.000772682950537716476},
-        {-0.00207450259783523421, -0.000772682950537716476},
-   };
-
-    return pj_generic_selftest (0, s_args, tolerance_xy, tolerance_lp, 4, 4, fwd_in, 0, s_fwd_expect, inv_in, 0, s_inv_expect);
-}
-
-#endif
-
-#ifndef PJ_SELFTEST
-int pj_wag5_selftest (void) {return 0;}
-#else
-
-int pj_wag5_selftest (void) {
-    double tolerance_lp = 1e-10;
-    double tolerance_xy = 1e-7;
-
-    char s_args[] = {"+proj=wag5   +a=6400000    +lat_1=0.5 +lat_2=2"};
-
-    LP fwd_in[] = {
-        { 2, 1},
-        { 2,-1},
-        {-2, 1},
-        {-2,-1}
-    };
-
-
-    XY s_fwd_expect[] = {
-        { 203227.05192532466,  138651.631442713202},
-        { 203227.05192532466, -138651.631442713202},
-        {-203227.05192532466,  138651.631442713202},
-        {-203227.05192532466, -138651.631442713202},
-    };
-
-    XY inv_in[] = {
-        { 200, 100},
-        { 200,-100},
-        {-200, 100},
-        {-200,-100}
-    };
-
-
-
-
-    LP s_inv_expect[] = {
-        { 0.00196807227086416396,  0.00072121615041701424},
-        { 0.00196807227086416396, -0.00072121615041701424},
-        {-0.00196807227086416396,  0.00072121615041701424},
-        {-0.00196807227086416396, -0.00072121615041701424},
-    };
-
-    return pj_generic_selftest (0, s_args, tolerance_xy, tolerance_lp, 4, 4, fwd_in, 0, s_fwd_expect, inv_in, 0, s_inv_expect);
-}
-
-
-#endif

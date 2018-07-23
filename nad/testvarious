@@ -283,8 +283,8 @@ $EXE +proj=hammer  +datum=WGS84 \
 EOF
 echo "##############################################################" >> ${OUT}
 echo "Test healpix forward projection on sphere" >> ${OUT}
-$EXE +proj=latlong +a=1 +lon_0=0 \
- +to +proj=healpix +a=1 +lon_0=0  -f '%.'5'f' \
+$EXE +proj=latlong +R=1 +lon_0=0 \
+ +to +proj=healpix +R=1 +lon_0=0  -f '%.'5'f' \
  -E >>${OUT} <<EOF
 0 41.81031
 -90 0
@@ -642,14 +642,14 @@ EOF
 echo "##############################################################" >> ${OUT}
 echo "Check inverse error handling with ob_tran (#225)" >> ${OUT}
 $EXE +proj=ob_tran \
-    +o_proj=moll +o_lon_p=LON_POLE +o_lat_p=LAT_POLE +lon_0=180 +ellps=WGS84 \
+    +o_proj=moll +a=6378137 +es=0 +o_lon_p=LON_POLE +o_lat_p=LAT_POLE +lon_0=180 \
  -E >>${OUT} <<EOF
 300000 400000
 20000000 30000000
 EOF
 echo "Test inverse handling" >> ${OUT}
 $EXE -I +proj=ob_tran \
-    +o_proj=moll +o_lon_p=LON_POLE +o_lat_p=LAT_POLE +lon_0=180 +ellps=WGS84 \
+    +o_proj=moll +a=6378137 +es=0 +o_lon_p=LON_POLE +o_lat_p=LAT_POLE +lon_0=180 \
  -E >>${OUT} <<EOF
 10 20
 EOF
@@ -782,11 +782,11 @@ EOF
 echo  "##############################################################" >> ${OUT}
 echo  "Test SCH inverse projection" >> ${OUT}
 #
-$EXE -f '%.7f' \
+$EXE -f '%.6f' \
     +proj=sch +datum=WGS84 +plat_0=30.0 +plon_0=45.0 +phdg_0=-12.0 +nodefs +to \
     +proj=latlong +datum=WGS84 \
  -E >> ${OUT} <<EOF
-0. 0.
+0. 0. 2.
 0. 1000.
 1000. 0.
 1000. 1000.
@@ -883,6 +883,16 @@ $EXE -f '%0.3f' \
 15011335.76413978 -8729502.054111844
 20015114.352186374 -11409566.822831295
 EOF
+echo  "##############################################################" >> ${OUT}
+echo  "Test Web Mercator to avoid issue #834 in the future" >> ${OUT}
+#
+$EXE -f '%0.3f' \
+    +proj=utm +zone=15 +datum=NAD83 \
+    +to +proj=merc +a=6378137 +b=6378137 +lat_ts=0.0 +lon_0=0.0 +x_0=0.0 +y_0=0 \
+    +k=1.0 +units=m +nadgrids=@null \
+ -E >> ${OUT} <<EOF
+487147.594520173 4934316.46263998
+EOF
 
 
 # Done!
@@ -891,9 +901,14 @@ echo "diff ${OUT} with ${OUT}.dist"
 diff -b ${OUT} ${NAD_DIR}/${OUT}.dist
 if [ $? -ne 0 ] ; then
 	echo  ""
-	echo "PROBLEMS HAVE OCCURED"
+	echo "PROBLEMS HAVE OCCURRED"
 	echo "test file ${OUT} saved"
     echo
+    echo "----------------------------------------------------------"
+	echo "${OUT}"
+    echo "----------------------------------------------------------"
+    cat ${OUT}
+    echo "----------------------------------------------------------"
 	exit 100
 else
 	echo "TEST OK"

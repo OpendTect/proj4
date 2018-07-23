@@ -1,18 +1,27 @@
 #define PJ_LIB__
-#include <projects.h>
+
+#include <errno.h>
+#include <math.h>
+
+#include "proj.h"
+#include "projects.h"
+#include "proj_math.h"
 
 PROJ_HEAD(gnom, "Gnomonic") "\n\tAzi, Sph.";
 
 #define EPS10  1.e-10
-#define N_POLE 0
-#define S_POLE 1
-#define EQUIT  2
-#define OBLIQ  3
+
+enum Mode {
+    N_POLE = 0,
+    S_POLE = 1,
+    EQUIT  = 2,
+    OBLIQ  = 3
+};
 
 struct pj_opaque {
     double  sinph0;
     double  cosph0;
-    int     mode;
+    enum Mode mode;
 };
 
 
@@ -40,7 +49,10 @@ static XY s_forward (LP lp, PJ *P) {           /* Spheroidal, forward */
             break;
     }
 
-    if (xy.y <= EPS10) F_ERROR;
+    if (xy.y <= EPS10) {
+        proj_errno_set(P, PJD_ERR_TOLERANCE_CONDITION);
+        return xy;
+    }
 
     xy.x = (xy.y = 1. / xy.y) * cosphi * sin(lp.lam);
     switch (Q->mode) {
@@ -52,6 +64,7 @@ static XY s_forward (LP lp, PJ *P) {           /* Spheroidal, forward */
             break;
         case N_POLE:
             coslam = - coslam;
+            /*-fallthrough*/
         case S_POLE:
             xy.y *= cosphi * coslam;
             break;
@@ -106,27 +119,10 @@ static LP s_inverse (XY xy, PJ *P) {           /* Spheroidal, inverse */
 }
 
 
-static void *freeup_new (PJ *P) {              /* Destructor */
-    if (0==P)
-        return 0;
-    if (0==P->opaque)
-        return pj_dealloc (P);
-
-    pj_dealloc (P->opaque);
-    return pj_dealloc(P);
-}
-
-
-static void freeup (PJ *P) {
-    freeup_new (P);
-    return;
-}
-
-
 PJ *PROJECTION(gnom) {
     struct pj_opaque *Q = pj_calloc (1, sizeof (struct pj_opaque));
     if (0==Q)
-        return freeup_new (P);
+        return pj_default_destructor (P, ENOMEM);
     P->opaque = Q;
 
     if (fabs(fabs(P->phi0) - M_HALFPI) < EPS10) {
@@ -145,48 +141,3 @@ PJ *PROJECTION(gnom) {
 
     return P;
 }
-
-
-#ifndef PJ_SELFTEST
-int pj_gnom_selftest (void) {return 0;}
-#else
-
-int pj_gnom_selftest (void) {
-    double tolerance_lp = 1e-10;
-    double tolerance_xy = 1e-7;
-
-    char s_args[] = {"+proj=gnom   +a=6400000    +lat_1=0.5 +lat_2=2"};
-
-    LP fwd_in[] = {
-        { 2, 1},
-        { 2,-1},
-        {-2, 1},
-        {-2,-1}
-    };
-
-    XY s_fwd_expect[] = {
-        { 223492.92474718543,  111780.50920659291},
-        { 223492.92474718543, -111780.50920659291},
-        {-223492.92474718543,  111780.50920659291},
-        {-223492.92474718543, -111780.50920659291},
-    };
-
-    XY inv_in[] = {
-        { 200, 100},
-        { 200,-100},
-        {-200, 100},
-        {-200,-100}
-    };
-
-    LP s_inv_expect[] = {
-        { 0.0017904931092009798,  0.00089524655438192376},
-        { 0.0017904931092009798, -0.00089524655438192376},
-        {-0.0017904931092009798,  0.00089524655438192376},
-        {-0.0017904931092009798, -0.00089524655438192376},
-    };
-
-    return pj_generic_selftest (0, s_args, tolerance_xy, tolerance_lp, 4, 4, fwd_in, 0, s_fwd_expect, inv_in, 0, s_inv_expect);
-}
-
-
-#endif

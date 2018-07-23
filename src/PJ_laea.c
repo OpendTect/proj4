@@ -1,7 +1,17 @@
 #define PJ_LIB__
-#include <projects.h>
+#include <errno.h>
+#include "proj.h"
+#include "projects.h"
+#include "proj_math.h"
 
 PROJ_HEAD(laea, "Lambert Azimuthal Equal Area") "\n\tAzi, Sph&Ell";
+
+enum Mode {
+    N_POLE = 0,
+    S_POLE = 1,
+    EQUIT  = 2,
+    OBLIQ  = 3
+};
 
 struct pj_opaque {
     double sinb1;
@@ -13,16 +23,10 @@ struct pj_opaque {
     double dd;
     double rq;
     double *apa;
-    int mode;
+    enum Mode mode;
 };
 
 #define EPS10   1.e-10
-#define NITER   20
-#define CONV    1.e-10
-#define N_POLE  0
-#define S_POLE  1
-#define EQUIT   2
-#define OBLIQ   3
 
 static XY e_forward (LP lp, PJ *P) {          /* Ellipsoidal, forward */
     XY xy = {0.0,0.0};
@@ -55,7 +59,10 @@ static XY e_forward (LP lp, PJ *P) {          /* Ellipsoidal, forward */
         q = Q->qp + q;
         break;
     }
-    if (fabs(b) < EPS10) F_ERROR;
+    if (fabs(b) < EPS10) {
+        proj_errno_set(P, PJD_ERR_TOLERANCE_CONDITION);
+        return xy;
+    }
 
     switch (Q->mode) {
     case OBLIQ:
@@ -98,7 +105,10 @@ static XY s_forward (LP lp, PJ *P) {           /* Spheroidal, forward */
     case OBLIQ:
         xy.y = 1. + Q->sinb1 * sinphi + Q->cosb1 * cosphi * coslam;
 oblcon:
-        if (xy.y <= EPS10) F_ERROR;
+        if (xy.y <= EPS10) {
+            proj_errno_set(P, PJD_ERR_TOLERANCE_CONDITION);
+            return xy;
+        }
         xy.y = sqrt(2. / xy.y);
         xy.x = xy.y * cosphi * sin(lp.lam);
         xy.y *= Q->mode == EQUIT ? sinphi :
@@ -106,8 +116,12 @@ oblcon:
         break;
     case N_POLE:
         coslam = -coslam;
+        /*-fallthrough*/
     case S_POLE:
-        if (fabs(lp.phi + P->phi0) < EPS10) F_ERROR;
+        if (fabs(lp.phi + P->phi0) < EPS10) {
+            proj_errno_set(P, PJD_ERR_TOLERANCE_CONDITION);
+            return xy;
+        }
         xy.y = M_FORTPI - lp.phi * .5;
         xy.y = 2. * (Q->mode == S_POLE ? cos(xy.y) : sin(xy.y));
         xy.x = xy.y * sin(lp.lam);
@@ -148,9 +162,10 @@ static LP e_inverse (XY xy, PJ *P) {          /* Ellipsoidal, inverse */
         break;
     case N_POLE:
         xy.y = -xy.y;
+        /*-fallthrough*/
     case S_POLE:
         q = (xy.x * xy.x + xy.y * xy.y);
-        if (!q) {
+        if (q == 0.0) {
             lp.lam = 0.;
             lp.phi = P->phi0;
             return (lp);
@@ -172,7 +187,10 @@ static LP s_inverse (XY xy, PJ *P) {           /* Spheroidal, inverse */
     double  cosz=0.0, rh, sinz=0.0;
 
     rh = hypot(xy.x, xy.y);
-    if ((lp.phi = rh * .5 ) > 1.) I_ERROR;
+    if ((lp.phi = rh * .5 ) > 1.) {
+        proj_errno_set(P, PJD_ERR_TOLERANCE_CONDITION);
+        return lp;
+    }
     lp.phi = 2. * asin(lp.phi);
     if (Q->mode == OBLIQ || Q->mode == EQUIT) {
         sinz = sin(lp.phi);
@@ -204,20 +222,16 @@ static LP s_inverse (XY xy, PJ *P) {           /* Spheroidal, inverse */
 }
 
 
-static void *freeup_new (PJ *P) {                       /* Destructor */
+static void *destructor (PJ *P, int errlev) {
     if (0==P)
         return 0;
+
     if (0==P->opaque)
-        return pj_dealloc (P);
+        return pj_default_destructor (P, errlev);
 
     pj_dealloc (P->opaque->apa);
-    pj_dealloc (P->opaque);
-    return pj_dealloc(P);
-}
 
-static void freeup (PJ *P) {
-    freeup_new (P);
-    return;
+    return pj_default_destructor(P, errlev);
 }
 
 
@@ -225,8 +239,9 @@ PJ *PROJECTION(laea) {
     double t;
     struct pj_opaque *Q = pj_calloc (1, sizeof (struct pj_opaque));
     if (0==Q)
-        return freeup_new (P);
+        return pj_default_destructor (P, ENOMEM);
     P->opaque = Q;
+    P->destructor = destructor;
 
     t = fabs(P->phi0);
     if (fabs(t - M_HALFPI) < EPS10)
@@ -235,13 +250,15 @@ PJ *PROJECTION(laea) {
         Q->mode = EQUIT;
     else
         Q->mode = OBLIQ;
-    if (P->es) {
+    if (P->es != 0.0) {
         double sinphi;
 
         P->e = sqrt(P->es);
         Q->qp = pj_qsfn(1., P->e, P->one_es);
         Q->mmf = .5 / (1. - P->es);
         Q->apa = pj_authset(P->es);
+        if (0==Q->apa)
+            return destructor(P, ENOMEM);
         switch (Q->mode) {
         case N_POLE:
         case S_POLE:
@@ -277,62 +294,3 @@ PJ *PROJECTION(laea) {
     return P;
 }
 
-
-#ifndef PJ_SELFTEST
-int pj_laea_selftest (void) {return 0;}
-#else
-
-int pj_laea_selftest (void) {
-    double tolerance_lp = 1e-10;
-    double tolerance_xy = 1e-7;
-
-    char e_args[] = {"+proj=laea   +ellps=GRS80  +lat_1=0.5 +lat_2=2"};
-    char s_args[] = {"+proj=laea   +a=6400000    +lat_1=0.5 +lat_2=2"};
-
-    LP fwd_in[] = {
-        { 2, 1},
-        { 2,-1},
-        {-2, 1},
-        {-2,-1}
-    };
-
-    XY e_fwd_expect[] = {
-        { 222602.471450095181,  110589.82722441027},
-        { 222602.471450095181, -110589.827224408786},
-        {-222602.471450095181,  110589.82722441027},
-        {-222602.471450095181, -110589.827224408786},
-    };
-
-    XY s_fwd_expect[] = {
-        { 223365.281370124663,  111716.668072915665},
-        { 223365.281370124663, -111716.668072915665},
-        {-223365.281370124663,  111716.668072915665},
-        {-223365.281370124663, -111716.668072915665},
-    };
-
-    XY inv_in[] = {
-        { 200, 100},
-        { 200,-100},
-        {-200, 100},
-        {-200,-100}
-    };
-
-    LP e_inv_expect[] = {
-        { 0.00179663056847900867,  0.000904369475966495845},
-        { 0.00179663056847900867, -0.000904369475966495845},
-        {-0.00179663056847900867,  0.000904369475966495845},
-        {-0.00179663056847900867, -0.000904369475966495845},
-    };
-
-    LP s_inv_expect[] = {
-        { 0.00179049311002060264,  0.000895246554791735271},
-        { 0.00179049311002060264, -0.000895246554791735271},
-        {-0.00179049311002060264,  0.000895246554791735271},
-        {-0.00179049311002060264, -0.000895246554791735271},
-    };
-
-    return pj_generic_selftest (e_args, s_args, tolerance_xy, tolerance_lp, 4, 4, fwd_in, e_fwd_expect, s_fwd_expect, inv_in, e_inv_expect, s_inv_expect);
-}
-
-
-#endif

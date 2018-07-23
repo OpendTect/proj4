@@ -75,9 +75,12 @@
  *
  *****************************************************************************/
 
-
 #define PJ_LIB__
-#include <projects.h>
+
+#include <errno.h>
+#include <math.h>
+
+#include "projects.h"
 
 PROJ_HEAD(krovak, "Krovak") "\n\tPCyl., Ellps.";
 
@@ -86,6 +89,8 @@ PROJ_HEAD(krovak, "Krovak") "\n\tPCyl., Ellps.";
 #define S90 1.570796326794896  /* 90 deg */
 #define UQ  1.04216856380474   /* DU(2, 59, 42, 42.69689) */
 #define S0  1.37008346281555   /* Latitude of pseudo standard parallel 78deg 30'00" N */
+/* Not sure at all of the appropriate number for MAX_ITER... */
+#define MAX_ITER 100
 
 struct pj_opaque {
     double alpha;
@@ -129,7 +134,7 @@ static LP e_inverse (XY xy, PJ *P) {                /* Ellipsoidal, inverse */
     LP lp = {0.0,0.0};
 
     double u, deltav, s, d, eps, rho, fi1, xy0;
-    int ok;
+    int i;
 
     xy0 = xy.x;
     xy.x = xy.y;
@@ -152,16 +157,18 @@ static LP e_inverse (XY xy, PJ *P) {                /* Ellipsoidal, inverse */
     /* ITERATION FOR lp.phi */
     fi1 = u;
 
-    ok = 0;
-    do {
+    for (i = MAX_ITER; i ; --i) {
         lp.phi = 2. * ( atan( pow( Q->k, -1. / Q->alpha)  *
                               pow( tan(u / 2. + S45) , 1. / Q->alpha)  *
                               pow( (1. + P->e * sin(fi1)) / (1. - P->e * sin(fi1)) , P->e / 2.)
                             )  - S45);
 
-        if (fabs(fi1 - lp.phi) < EPS) ok=1;
+        if (fabs(fi1 - lp.phi) < EPS)
+            break;
         fi1 = lp.phi;
-   } while (ok==0);
+    }
+    if( i == 0 )
+        pj_ctx_set_errno( P->ctx, PJD_ERR_NON_CONVERGENT );
 
    lp.lam -= P->lam0;
 
@@ -169,27 +176,11 @@ static LP e_inverse (XY xy, PJ *P) {                /* Ellipsoidal, inverse */
 }
 
 
-static void *freeup_new (PJ *P) {                   /* Destructor */
-    if (0==P)
-        return 0;
-    if (0==P->opaque)
-        return pj_dealloc(P);
-
-    pj_dealloc(P->opaque);
-    return pj_dealloc(P);
-}
-
-static void freeup (PJ *P) {
-    freeup_new (P);
-    return;
-}
-
-
 PJ *PROJECTION(krovak) {
     double u0, n0, g;
     struct pj_opaque *Q = pj_calloc (1, sizeof (struct pj_opaque));
     if (0==Q)
-        return freeup_new (P);
+        return pj_default_destructor (P, ENOMEM);
     P->opaque = Q;
 
     /* we want Bessel as fixed ellipsoid */
@@ -229,48 +220,3 @@ PJ *PROJECTION(krovak) {
 
     return P;
 }
-
-
-#ifndef PJ_SELFTEST
-int pj_krovak_selftest (void) {return 0;}
-#else
-
-int pj_krovak_selftest (void) {
-    double tolerance_lp = 1e-10;
-    double tolerance_xy = 1e-7;
-
-    char e_args[] = {"+proj=krovak +ellps=GRS80"};
-
-    LP fwd_in[] = {
-        { 2, 1},
-        { 2,-1},
-        {-2, 1},
-        {-2,-1}
-    };
-
-    XY e_fwd_expect[] = {
-        {-3196535.2325636409,  -6617878.8675514441},
-        {-3260035.4405521089,  -6898873.6148780314},
-        {-3756305.3288691747,  -6478142.5615715114},
-        {-3831703.6585019818,  -6759107.1701553948},
-    };
-
-    XY inv_in[] = {
-        { 200, 100},
-        { 200,-100},
-        {-200, 100},
-        {-200,-100}
-    };
-
-    LP e_inv_expect[] = {
-        {24.836218918719162,  59.758403933233858},
-        {24.836315484509566,  59.756888425730189},
-        {24.830447747947495,  59.758403933233858},
-        {24.830351182157091,  59.756888425730189},
-    };
-
-    return pj_generic_selftest (e_args, 0, tolerance_xy, tolerance_lp, 4, 4, fwd_in, e_fwd_expect, 0, inv_in, e_inv_expect, 0);
-}
-
-
-#endif

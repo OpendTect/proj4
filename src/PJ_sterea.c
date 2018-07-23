@@ -24,7 +24,9 @@
 ** SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
 #define PJ_LIB__
-#include    <projects.h>
+#include <errno.h>
+#include "projects.h"
+#include "proj_math.h"
 
 
 struct pj_opaque {
@@ -36,8 +38,6 @@ struct pj_opaque {
 
 
 PROJ_HEAD(sterea, "Oblique Stereographic Alternative") "\n\tAzimuthal, Sph&Ell";
-# define DEL_TOL    1.e-14
-# define MAX_ITER   10
 
 
 
@@ -64,7 +64,7 @@ static LP e_inverse (XY xy, PJ *P) {          /* Ellipsoidal, inverse */
 
     xy.x /= P->k0;
     xy.y /= P->k0;
-    if ( (rho = hypot (xy.x, xy.y)) ) {
+    if ( (rho = hypot (xy.x, xy.y)) != 0.0 ) {
         c = 2. * atan2 (rho, Q->R2);
         sinc = sin (c);
         cosc = cos (c);
@@ -78,21 +78,15 @@ static LP e_inverse (XY xy, PJ *P) {          /* Ellipsoidal, inverse */
 }
 
 
-static void *freeup_new (PJ *P) {                       /* Destructor */
+static void *destructor (PJ *P, int errlev) {
     if (0==P)
         return 0;
+
     if (0==P->opaque)
-        return pj_dealloc (P);
+        return pj_default_destructor (P, errlev);
 
     pj_dealloc (P->opaque->en);
-    pj_dealloc (P->opaque);
-    return pj_dealloc(P);
-}
-
-
-static void freeup (PJ *P) {
-    freeup_new (P);
-    return;
+    return pj_default_destructor (P, errlev);
 }
 
 
@@ -101,12 +95,12 @@ PJ *PROJECTION(sterea) {
     struct pj_opaque *Q = pj_calloc (1, sizeof (struct pj_opaque));
 
     if (0==Q)
-        return freeup_new (P);
+        return pj_default_destructor (P, ENOMEM);
     P->opaque = Q;
 
     Q->en = pj_gauss_ini(P->e, P->phi0, &(Q->phic0), &R);
     if (0==Q->en)
-        return freeup_new (P);
+        return pj_default_destructor (P, ENOMEM);
 
     Q->sinc0 = sin (Q->phic0);
     Q->cosc0 = cos (Q->phic0);
@@ -114,65 +108,8 @@ PJ *PROJECTION(sterea) {
 
     P->inv = e_inverse;
     P->fwd = e_forward;
+    P->destructor = destructor;
+
     return P;
 }
 
-
-#ifndef PJ_SELFTEST
-int pj_sterea_selftest (void) {return 0;}
-#else
-
-int pj_sterea_selftest (void) {
-    double tolerance_lp = 1e-10;
-    double tolerance_xy = 1e-7;
-
-    char e_args[] = {"+proj=sterea   +ellps=GRS80  +lat_1=0.5 +lat_2=2 +n=0.5"};
-    char s_args[] = {"+proj=sterea   +a=6400000    +lat_1=0.5 +lat_2=2 +n=0.5"};
-
-    LP fwd_in[] = {
-        { 2, 1},
-        { 2,-1},
-        {-2, 1},
-        {-2,-1}
-    };
-
-    XY e_fwd_expect[] = {
-        { 222644.89410919772,  110611.09187173686},
-        { 222644.89410919772, -110611.09187173827},
-        {-222644.89410919772,  110611.09187173686},
-        {-222644.89410919772, -110611.09187173827},
-    };
-
-    XY s_fwd_expect[] = {
-        { 223407.81025950745,  111737.93899644315},
-        { 223407.81025950745, -111737.93899644315},
-        {-223407.81025950745,  111737.93899644315},
-        {-223407.81025950745, -111737.93899644315},
-    };
-
-    XY inv_in[] = {
-        { 200, 100},
-        { 200,-100},
-        {-200, 100},
-        {-200,-100}
-    };
-
-    LP e_inv_expect[] = {
-        { 0.0017966305682019911,  0.00090436947683099009},
-        { 0.0017966305682019911, -0.00090436947684371233},
-        {-0.0017966305682019911,  0.00090436947683099009},
-        {-0.0017966305682019911, -0.00090436947684371233},
-    };
-
-    LP s_inv_expect[] = {
-        { 0.001790493109747395,  0.00089524655465446378},
-        { 0.001790493109747395, -0.00089524655465446378},
-        {-0.001790493109747395,  0.00089524655465446378},
-        {-0.001790493109747395, -0.00089524655465446378},
-    };
-
-    return pj_generic_selftest (e_args, s_args, tolerance_xy, tolerance_lp, 4, 4, fwd_in, e_fwd_expect, s_fwd_expect, inv_in, e_inv_expect, s_inv_expect);
-}
-
-
-#endif

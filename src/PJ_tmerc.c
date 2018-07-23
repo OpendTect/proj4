@@ -1,12 +1,17 @@
 #define PJ_LIB__
-#include    <projects.h>
+
+#include <errno.h>
+#include <math.h>
+
+#include "proj.h"
+#include "projects.h"
 
 PROJ_HEAD(tmerc, "Transverse Mercator") "\n\tCyl, Sph&Ell";
 
 
 struct pj_opaque {
-    double  esp; \
-    double  ml0; \
+    double  esp;
+    double  ml0;
     double  *en;
 };
 
@@ -36,7 +41,7 @@ static XY e_forward (LP lp, PJ *P) {          /* Ellipsoidal, forward */
     if( lp.lam < -M_HALFPI || lp.lam > M_HALFPI ) {
         xy.x = HUGE_VAL;
         xy.y = HUGE_VAL;
-        pj_ctx_set_errno( P->ctx, -14 );
+        pj_ctx_set_errno( P->ctx, PJD_ERR_LAT_OR_LON_EXCEED_LIMIT );
         return xy;
     }
 
@@ -77,22 +82,26 @@ static XY s_forward (LP lp, PJ *P) {           /* Spheroidal, forward */
     if( lp.lam < -M_HALFPI || lp.lam > M_HALFPI ) {
         xy.x = HUGE_VAL;
         xy.y = HUGE_VAL;
-        pj_ctx_set_errno( P->ctx, -14 );
+        pj_ctx_set_errno( P->ctx, PJD_ERR_LAT_OR_LON_EXCEED_LIMIT );
         return xy;
     }
 
     cosphi = cos(lp.phi);
     b = cosphi * sin (lp.lam);
-    if (fabs (fabs (b) - 1.) <= EPS10)
-        F_ERROR;
+    if (fabs (fabs (b) - 1.) <= EPS10) {
+        proj_errno_set(P, PJD_ERR_TOLERANCE_CONDITION);
+        return xy;
+    }
 
     xy.x = P->opaque->ml0 * log ((1. + b) / (1. - b));
     xy.y = cosphi * cos (lp.lam) / sqrt (1. - b * b);
 
     b = fabs ( xy.y );
     if (b >= 1.) {
-        if ((b - 1.) > EPS10)
-            F_ERROR
+        if ((b - 1.) > EPS10) {
+            proj_errno_set(P, PJD_ERR_TOLERANCE_CONDITION);
+            return xy;
+        }
         else xy.y = 0.;
     } else
         xy.y = acos (xy.y);
@@ -126,7 +135,7 @@ static LP e_inverse (XY xy, PJ *P) {          /* Ellipsoidal, inverse */
             ds * FC4 * (5. + t * (3. - 9. *  n) + n * (1. - 4 * n) -
             ds * FC6 * (61. + t * (90. - 252. * n +
                 45. * t) + 46. * n
-           - ds * FC8 * (1385. + t * (3633. + t * (4095. + 1574. * t)) )
+           - ds * FC8 * (1385. + t * (3633. + t * (4095. + 1575. * t)) )
             )));
         lp.lam = d*(FC1 -
             ds*FC3*( 1. + 2.*t + n -
@@ -146,32 +155,33 @@ static LP s_inverse (XY xy, PJ *P) {           /* Spheroidal, inverse */
     g = .5 * (h - 1. / h);
     h = cos (P->phi0 + xy.y / P->opaque->esp);
     lp.phi = asin(sqrt((1. - h * h) / (1. + g * g)));
-    if (xy.y < 0.) lp.phi = -lp.phi;
-    lp.lam = (g || h) ? atan2 (g, h) : 0.;
+
+    /* Make sure that phi is on the correct hemisphere when false northing is used */
+    if (xy.y < 0. && -lp.phi+P->phi0 < 0.0) lp.phi = -lp.phi;
+
+    lp.lam = (g != 0.0 || h != 0.0) ? atan2 (g, h) : 0.;
     return lp;
 }
 
 
-static void *freeup_new (PJ *P) {                       /* Destructor */
+static void *destructor(PJ *P, int errlev) {                       /* Destructor */
     if (0==P)
         return 0;
+
     if (0==P->opaque)
-        return pj_dealloc (P);
+        return pj_default_destructor(P, errlev);
+
     pj_dealloc (P->opaque->en);
-    pj_dealloc (P->opaque);
-    return pj_dealloc(P);
+    return pj_default_destructor(P, errlev);
 }
 
-static void freeup (PJ *P) {
-    freeup_new (P);
-    return;
-}
 
 static PJ *setup(PJ *P) {                   /* general initialization */
     struct pj_opaque *Q = P->opaque;
-    if (P->es) {
+    if (P->es != 0.0) {
         if (!(Q->en = pj_enfn(P->es)))
-            E_ERROR_0;
+            return pj_default_destructor(P, ENOMEM);
+
         Q->ml0 = pj_mlfn(P->phi0, sin(P->phi0), cos(P->phi0), Q->en);
         Q->esp = P->es / (1. - P->es);
         P->inv = e_inverse;
@@ -189,64 +199,10 @@ static PJ *setup(PJ *P) {                   /* general initialization */
 PJ *PROJECTION(tmerc) {
     struct pj_opaque *Q = pj_calloc (1, sizeof (struct pj_opaque));
     if (0==Q)
-        return freeup_new (P);
+        return pj_default_destructor (P, ENOMEM);
+
     P->opaque = Q;
+    P->destructor = destructor;
+
     return setup(P);
 }
-
-
-#ifndef PJ_SELFTEST
-int pj_tmerc_selftest (void) {return 0;}
-#else
-int pj_tmerc_selftest (void) {
-    double tolerance_lp = 1e-10;
-    double tolerance_xy = 1e-7;
-
-    char e_args[] = {"+proj=tmerc   +ellps=GRS80  +lat_1=0.5 +lat_2=2 +n=0.5"};
-    char s_args[] = {"+proj=tmerc   +a=6400000    +lat_1=0.5 +lat_2=2 +n=0.5"};
-
-    LP fwd_in[] = {
-        { 2, 1},
-        { 2,-1},
-        {-2, 1},
-        {-2,-1}
-    };
-
-    XY e_fwd_expect[] = {
-        { 222650.79679577847,  110642.22941192707},
-        { 222650.79679577847, -110642.22941192707},
-        {-222650.79679577847,  110642.22941192707},
-        {-222650.79679577847, -110642.22941192707},
-    };
-
-    XY s_fwd_expect[] = {
-        { 223413.46640632232,  111769.14504059685},
-        { 223413.46640632232, -111769.14504059685},
-        {-223413.46640632208,  111769.14504059685},
-        {-223413.46640632208, -111769.14504059685},
-    };
-
-    XY inv_in[] = {
-        { 200, 100},
-        { 200,-100},
-        {-200, 100},
-        {-200,-100}
-    };
-
-    LP e_inv_expect[] = {
-        { 0.0017966305681649396,  0.00090436947663183841},
-        { 0.0017966305681649396, -0.00090436947663183841},
-        {-0.0017966305681649396,  0.00090436947663183841},
-        {-0.0017966305681649396, -0.00090436947663183841},
-    };
-
-    LP s_inv_expect[] = {
-        { 0.0017904931097048034,  0.00089524670602767842},
-        { 0.0017904931097048034, -0.00089524670602767842},
-        {-0.001790493109714345,   0.00089524670602767842},
-        {-0.001790493109714345,  -0.00089524670602767842},
-    };
-
-    return pj_generic_selftest (e_args, s_args, tolerance_xy, tolerance_lp, 4, 4, fwd_in, e_fwd_expect, s_fwd_expect, inv_in, e_inv_expect, s_inv_expect);
-}
-#endif

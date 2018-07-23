@@ -1,5 +1,10 @@
 #define PJ_LIB__
-#include    <projects.h>
+
+#include <errno.h>
+#include <math.h>
+
+#include "proj.h"
+#include "projects.h"
 
 typedef struct { double r, Az; } VECT;
 struct pj_opaque {
@@ -48,7 +53,7 @@ static double lc(projCtx ctx, double b,double c,double a) {
 
 
 static XY s_forward (LP lp, PJ *P) {           /* Spheroidal, forward */
-    XY xy = {0.0,0.0};
+    XY xy;
     struct pj_opaque *Q = P->opaque;
     double sinphi, cosphi, a;
     VECT v[3];
@@ -59,7 +64,7 @@ static XY s_forward (LP lp, PJ *P) {           /* Spheroidal, forward */
     for (i = 0; i < 3; ++i) { /* dist/azimiths from control */
         v[i] = vect(P->ctx, lp.phi - Q->c[i].phi, Q->c[i].cosphi, Q->c[i].sinphi,
             cosphi, sinphi, lp.lam - Q->c[i].lam);
-        if ( ! v[i].r)
+        if (v[i].r == 0.0)
             break;
         v[i].Az = adjlon(v[i].Az - Q->c[i].v.Az);
     }
@@ -92,28 +97,13 @@ static XY s_forward (LP lp, PJ *P) {           /* Spheroidal, forward */
 }
 
 
-static void *freeup_new (PJ *P) {                       /* Destructor */
-    if (0==P)
-        return 0;
-    if (0==P->opaque)
-        return pj_dealloc (P);
-
-    pj_dealloc (P->opaque);
-    return pj_dealloc(P);
-}
-
-static void freeup (PJ *P) {
-    freeup_new (P);
-    return;
-}
-
 
 PJ *PROJECTION(chamb) {
     int i, j;
     char line[10];
     struct pj_opaque *Q = pj_calloc (1, sizeof (struct pj_opaque));
     if (0==Q)
-        return freeup_new (P);
+        return pj_default_destructor (P, ENOMEM);
     P->opaque = Q;
 
 
@@ -130,7 +120,8 @@ PJ *PROJECTION(chamb) {
         j = i == 2 ? 0 : i + 1;
         Q->c[i].v = vect(P->ctx,Q->c[j].phi - Q->c[i].phi, Q->c[i].cosphi, Q->c[i].sinphi,
             Q->c[j].cosphi, Q->c[j].sinphi, Q->c[j].lam - Q->c[i].lam);
-        if (! Q->c[i].v.r) E_ERROR(-25);
+        if (Q->c[i].v.r == 0.0)
+            return pj_default_destructor (P, PJD_ERR_CONTROL_POINT_NO_DIST);
         /* co-linearity problem ignored for now */
     }
     Q->beta_0 = lc(P->ctx,Q->c[0].v.r, Q->c[2].v.r, Q->c[1].v.r);
@@ -146,34 +137,3 @@ PJ *PROJECTION(chamb) {
 
     return P;
 }
-
-
-#ifndef PJ_SELFTEST
-int pj_chamb_selftest (void) {return 0;}
-#else
-
-int pj_chamb_selftest (void) {
-    double tolerance_lp = 1e-10;
-    double tolerance_xy = 1e-7;
-
-    char s_args[] = {"+proj=chamb   +a=6400000    +lat_1=0.5 +lat_2=2"};
-
-    LP fwd_in[] = {
-        { 2, 1},
-        { 2,-1},
-        {-2, 1},
-        {-2,-1}
-    };
-
-    XY s_fwd_expect[] = {
-        {-27864.7795868005815,  -223364.324593274243},
-        {-251312.283053493476,  -223402.145526208304},
-        {-27864.7856491046077,  223364.327328827145},
-        {-251312.289116443484,  223402.142197287147},
-    };
-
-    return pj_generic_selftest (0, s_args, tolerance_xy, tolerance_lp, 4, 4, fwd_in, 0, s_fwd_expect, 0, 0, 0);
-}
-
-
-#endif

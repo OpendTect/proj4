@@ -1,0 +1,71 @@
+# This is the config file for building proj.4 and running its test suite
+# with Travis-ci.org
+
+cache:
+    directories:
+        - $HOME/.ccache
+
+matrix:
+  fast_finish: true
+  include:
+
+    - os: linux
+      compiler: gcc
+      language: c
+      sudo: required
+      services:
+        - docker
+      env:
+        - BUILD_NAME=linux_gcc
+        - DETAILS="linux, gcc"
+    - os: linux
+      compiler: clang
+      language: c
+      sudo: required
+      services:
+        - docker
+      env:
+        - BUILD_NAME=linux_clang
+        - DETAILS="linux, clang"
+    - os: osx
+      language: c
+      env:
+        - BUILD_NAME=osx
+        - DETAILS="osx"
+    - os: linux
+      compiler: gcc
+      language: c
+      sudo: required
+      env:
+        - BUILD_NAME=mingw32
+        - DETAILS="mingw32"
+
+    - os: linux
+      compiler: gcc
+      language: c
+      dist: trusty
+      env:
+        - BUILD_NAME=csa
+        - DETAILS="CLang Static Analyzer"
+
+  allow_failures:
+      - env: BUILD_NAME=mingw32
+
+before_install: ./travis/${BUILD_NAME}/before_install.sh
+
+install: ./travis/${BUILD_NAME}/install.sh
+
+script:
+  - echo "done"
+
+after_success: ./travis/${BUILD_NAME}/after_success.sh
+
+notifications:
+  #email:
+  #  recipients:
+  #    - gdal-commits@lists.osgeo.org
+
+  irc:
+    channels:
+      - "irc.freenode.org#gdal"
+    use_notice: true

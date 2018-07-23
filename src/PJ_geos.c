@@ -28,7 +28,13 @@
 */
 
 #define PJ_LIB__
-#include <projects.h>
+#include <errno.h>
+#include <math.h>
+#include <stddef.h>
+
+#include "proj.h"
+#include "projects.h"
+#include "proj_math.h"
 
 struct pj_opaque {
     double h;
@@ -38,7 +44,6 @@ struct pj_opaque {
     double radius_g;
     double radius_g_1;
     double C;
-    char *sweep_axis;
     int flip_axis;
 };
 
@@ -91,8 +96,10 @@ static XY e_forward (LP lp, PJ *P) {          /* Ellipsoidal, forward */
     Vz = r * sin (lp.phi);
 
     /* Check visibility. */
-    if (((Q->radius_g - Vx) * Vx - Vy * Vy - Vz * Vz * Q->radius_p_inv2) < 0.)
-        F_ERROR;
+    if (((Q->radius_g - Vx) * Vx - Vy * Vy - Vz * Vz * Q->radius_p_inv2) < 0.) {
+        proj_errno_set(P, PJD_ERR_TOLERANCE_CONDITION);
+        return xy;
+    }
 
     /* Calculation based on view angles from satellite. */
     tmp = Q->radius_g - Vx;
@@ -127,7 +134,10 @@ static LP s_inverse (XY xy, PJ *P) {           /* Spheroidal, inverse */
     /* Calculation of terms in cubic equation and determinant.*/
     a = Vy * Vy + Vz * Vz + Vx * Vx;
     b = 2 * Q->radius_g * Vx;
-    if ((det = (b * b) - 4 * a * Q->C) < 0.) I_ERROR;
+    if ((det = (b * b) - 4 * a * Q->C) < 0.) {
+        proj_errno_set(P, PJD_ERR_TOLERANCE_CONDITION);
+        return lp;
+    }
 
     /* Calculation of three components of vector from satellite to position.*/
     k  = (-b - sqrt(det)) / (2 * a);
@@ -163,7 +173,10 @@ static LP e_inverse (XY xy, PJ *P) {          /* Ellipsoidal, inverse */
     a = Vz / Q->radius_p;
     a   = Vy * Vy + a * a + Vx * Vx;
     b   = 2 * Q->radius_g * Vx;
-    if ((det = (b * b) - 4 * a * Q->C) < 0.) I_ERROR;
+    if ((det = (b * b) - 4 * a * Q->C) < 0.) {
+        proj_errno_set(P, PJD_ERR_TOLERANCE_CONDITION);
+        return lp;
+    }
 
     /* Calculation of three components of vector from satellite to position.*/
     k  = (-b - sqrt(det)) / (2. * a);
@@ -180,41 +193,25 @@ static LP e_inverse (XY xy, PJ *P) {          /* Ellipsoidal, inverse */
 }
 
 
-static void *freeup_new (PJ *P) {                       /* Destructor */
-    if (0==P)
-        return 0;
-    if (0==P->opaque)
-        return pj_dealloc (P);
-
-    pj_dealloc (P->opaque);
-    return pj_dealloc(P);
-}
-
-static void freeup (PJ *P) {
-    freeup_new (P);
-    return;
-}
-
-
 PJ *PROJECTION(geos) {
+    char *sweep_axis;
     struct pj_opaque *Q = pj_calloc (1, sizeof (struct pj_opaque));
     if (0==Q)
-        return freeup_new (P);
+        return pj_default_destructor (P, ENOMEM);
     P->opaque = Q;
 
-    if ((Q->h = pj_param(P->ctx, P->params, "dh").f) <= 0.) E_ERROR(-30);
+    if ((Q->h = pj_param(P->ctx, P->params, "dh").f) <= 0.)
+        return pj_default_destructor (P, PJD_ERR_H_LESS_THAN_ZERO);
 
-    if (P->phi0) E_ERROR(-46);
-
-    Q->sweep_axis = pj_param(P->ctx, P->params, "ssweep").s;
-    if (Q->sweep_axis == NULL)
+    sweep_axis = pj_param(P->ctx, P->params, "ssweep").s;
+    if (sweep_axis == NULL)
       Q->flip_axis = 0;
     else {
-        if (Q->sweep_axis[1] != '\0' ||
-            (Q->sweep_axis[0] != 'x' &&
-             Q->sweep_axis[0] != 'y'))
-          E_ERROR(-49);
-        if (Q->sweep_axis[0] == 'x')
+        if ((sweep_axis[0] != 'x' && sweep_axis[0] != 'y') ||
+            sweep_axis[1] != '\0')
+            return pj_default_destructor (P, PJD_ERR_INVALID_SWEEP_AXIS);
+
+        if (sweep_axis[0] == 'x')
           Q->flip_axis = 1;
         else
           Q->flip_axis = 0;
@@ -223,7 +220,7 @@ PJ *PROJECTION(geos) {
     Q->radius_g_1 = Q->h / P->a;
     Q->radius_g = 1. + Q->radius_g_1;
     Q->C  = Q->radius_g * Q->radius_g - 1.0;
-    if (P->es) {
+    if (P->es != 0.0) {
         Q->radius_p      = sqrt (P->one_es);
         Q->radius_p2     = P->one_es;
         Q->radius_p_inv2 = P->rone_es;
@@ -237,63 +234,3 @@ PJ *PROJECTION(geos) {
 
     return P;
 }
-
-
-#ifndef PJ_SELFTEST
-int pj_geos_selftest (void) {return 0;}
-#else
-
-int pj_geos_selftest (void) {
-    double tolerance_lp = 1e-10;
-    double tolerance_xy = 1e-7;
-
-    char e_args[] = {"+proj=geos   +ellps=GRS80  +lat_1=0.5 +lat_2=2 +h=35785831"};
-    char s_args[] = {"+proj=geos   +a=6400000    +lat_1=0.5 +lat_2=2 +h=35785831"};
-
-    LP fwd_in[] = {
-        { 2, 1},
-        { 2,-1},
-        {-2, 1},
-        {-2,-1}
-    };
-
-    XY e_fwd_expect[] = {
-        { 222527.07036580026,  110551.30341332949},
-        { 222527.07036580026, -110551.30341332949},
-        {-222527.07036580026,  110551.30341332949},
-        {-222527.07036580026, -110551.30341332949},
-    };
-
-    XY s_fwd_expect[] = {
-        { 223289.45763579503,  111677.65745653701},
-        { 223289.45763579503,  -111677.65745653701},
-        {-223289.45763579503,  111677.65745653701},
-        {-223289.45763579503,  -111677.65745653701},
-    };
-
-    XY inv_in[] = {
-        { 200, 100},
-        { 200,-100},
-        {-200, 100},
-        {-200,-100}
-    };
-
-    LP e_inv_expect[] = {
-        { 0.0017966305689715385,  0.00090436947723267452},
-        { 0.0017966305689715385, -0.00090436947723267452},
-        {-0.0017966305689715385,  0.00090436947723267452},
-        {-0.0017966305689715385, -0.00090436947723267452},
-    };
-
-    LP s_inv_expect[] = {
-        { 0.0017904931105078943,  0.00089524655504237148},
-        { 0.0017904931105078943, -0.00089524655504237148},
-        {-0.0017904931105078943,  0.00089524655504237148},
-        {-0.0017904931105078943, -0.00089524655504237148},
-    };
-
-    return pj_generic_selftest (e_args, s_args, tolerance_xy, tolerance_lp, 4, 4, fwd_in, e_fwd_expect, s_fwd_expect, inv_in, e_inv_expect, s_inv_expect);
-}
-
-
-#endif

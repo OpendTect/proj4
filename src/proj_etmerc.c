@@ -38,11 +38,13 @@
  *
 */
 
-
-#define PROJ_LIB__
 #define PJ_LIB__
 
-#include <projects.h>
+#include <errno.h>
+
+#include "proj.h"
+#include "projects.h"
+#include "proj_math.h"
 
 
 struct pj_opaque {
@@ -57,35 +59,9 @@ struct pj_opaque {
 PROJ_HEAD(etmerc, "Extended Transverse Mercator")
     "\n\tCyl, Sph\n\tlat_ts=(0)\nlat_0=(0)";
 PROJ_HEAD(utm, "Universal Transverse Mercator (UTM)")
-	"\n\tCyl, Sph\n\tzone= south";
+    "\n\tCyl, Sph\n\tzone= south";
 
 #define PROJ_ETMERC_ORDER 6
-
-
-#ifdef _GNU_SOURCE
-    inline
-#endif
-static double log1py(double x) {              /* Compute log(1+x) accurately */
-    volatile double
-      y = 1 + x,
-      z = y - 1;
-    /* Here's the explanation for this magic: y = 1 + z, exactly, and z
-     * approx x, thus log(y)/z (which is nearly constant near z = 0) returns
-     * a good approximation to the true log(1 + x)/x.  The multiplication x *
-     * (log(y)/z) introduces little additional error. */
-    return z == 0 ? x : x * log(y) / z;
-}
-
-
-#ifdef _GNU_SOURCE
-    inline
-#endif
-static double asinhy(double x) {              /* Compute asinh(x) accurately */
-    double y = fabs(x);         /* Enforce odd parity */
-    y = log1py(y * (1 + y/(hypot(1.0, y) + 1)));
-    return x < 0 ? -y : y;
-}
-
 
 #ifdef _GNU_SOURCE
     inline
@@ -181,7 +157,7 @@ static XY e_forward (LP lp, PJ *P) {          /* Ellipsoidal, forward */
     Ce     = atan2 (sin_Ce*cos_Cn,  hypot (sin_Cn, cos_Cn*cos_Ce));
 
     /* compl. sph. N, E -> ell. norm. N, E */
-    Ce  = asinhy ( tan (Ce) );     /* Replaces: Ce  = log(tan(FORTPI + Ce*0.5)); */
+    Ce  = asinh ( tan (Ce) );     /* Replaces: Ce  = log(tan(FORTPI + Ce*0.5)); */
     Cn += clenS (Q->gtu, PROJ_ETMERC_ORDER, 2*Cn, 2*Ce, &dCn, &dCe);
     Ce += dCe;
     if (fabs (Ce) <= 2.623395162778) {
@@ -231,27 +207,13 @@ static LP e_inverse (XY xy, PJ *P) {          /* Ellipsoidal, inverse */
 }
 
 
-
-static void *freeup_new (PJ *P) {                       /* Destructor */
-    if (0==P)
-        return 0;
-    if (0==P->opaque)
-        return pj_dealloc (P);
-    pj_dealloc (P->opaque);
-    return pj_dealloc(P);
-}
-
-static void freeup (PJ *P) {
-    freeup_new (P);
-    return;
-}
-
 static PJ *setup(PJ *P) { /* general initialization */
     double f, n, np, Z;
     struct pj_opaque *Q = P->opaque;
 
-    if (P->es <= 0)
-        E_ERROR(-34);
+    if (P->es <= 0) {
+        return pj_default_destructor(P, PJD_ERR_ELLIPSOID_USE_REQUIRED);
+    }
 
     /* flattening */
     f = P->es / (1 + sqrt (1 -  P->es)); /* Replaces: f = 1 - sqrt(1-P->es); */
@@ -329,7 +291,7 @@ static PJ *setup(PJ *P) { /* general initialization */
     Q->Zb  = - Q->Qn*(Z + clens(Q->gtu, PROJ_ETMERC_ORDER, 2*Z));
     P->inv = e_inverse;
     P->fwd = e_forward;
-	return P;
+    return P;
 }
 
 
@@ -337,67 +299,10 @@ static PJ *setup(PJ *P) { /* general initialization */
 PJ *PROJECTION(etmerc) {
     struct pj_opaque *Q = pj_calloc (1, sizeof (struct pj_opaque));
     if (0==Q)
-        return freeup_new (P);
+        return pj_default_destructor (P, ENOMEM);
     P->opaque = Q;
    return setup (P);
 }
-
-
-
-
-
-
-
-#ifndef PJ_SELFTEST
-int pj_etmerc_selftest (void) {return 0;}
-#else
-
-int pj_etmerc_selftest (void) {
-    double tolerance_lp = 1e-10;
-    double tolerance_xy = 1e-7;
-
-    char e_args[] = {"+proj=etmerc   +ellps=GRS80  +lat_1=0.5 +lat_2=2 +n=0.5 +zone=30"};
-
-    LP fwd_in[] = {
-        { 2, 1},
-        { 2,-1},
-        {-2, 1},
-        {-2,-1}
-    };
-
-    XY e_fwd_expect[] = {
-        {222650.79679758562,  110642.22941193319},
-        {222650.79679758562,  -110642.22941193319},
-        {-222650.79679758562,  110642.22941193319},
-        {-222650.79679758562,  -110642.22941193319},
-    };
-
-    XY inv_in[] = {
-        { 200, 100},
-        { 200,-100},
-        {-200, 100},
-        {-200,-100}
-    };
-
-    LP e_inv_expect[] = {
-        {0.0017966305681649398,  0.00090436947663183873},
-        {0.0017966305681649398,  -0.00090436947663183873},
-        {-0.0017966305681649398,  0.00090436947663183873},
-        {-0.0017966305681649398,  -0.00090436947663183873},
-    };
-
-    return pj_generic_selftest (e_args, 0, tolerance_xy, tolerance_lp, 4, 4, fwd_in, e_fwd_expect, 0, inv_in, e_inv_expect, 0);
-}
-#endif
-
-
-
-
-
-
-
-
-
 
 
 
@@ -405,75 +310,42 @@ int pj_etmerc_selftest (void) {
 
 
 PJ *PROJECTION(utm) {
-	int zone;
+    long zone;
     struct pj_opaque *Q = pj_calloc (1, sizeof (struct pj_opaque));
     if (0==Q)
-        return freeup_new (P);
+        return pj_default_destructor (P, ENOMEM);
     P->opaque = Q;
 
-	if (!P->es)
-        E_ERROR(-34);
-	P->y0 = pj_param (P->ctx, P->params, "bsouth").i ? 10000000. : 0.;
-	P->x0 = 500000.;
-	if (pj_param (P->ctx, P->params, "tzone").i) /* zone input ? */
-		if ((zone = pj_param(P->ctx, P->params, "izone").i) > 0 && zone <= 60)
-			--zone;
-		else
-			E_ERROR(-35)
-	else /* nearest central meridian input */
-		if ((zone = (int)(floor ((adjlon (P->lam0) + M_PI) * 30. / M_PI))) < 0)
-			zone = 0;
-		else if (zone >= 60)
-			zone = 59;
-	P->lam0 = (zone + .5) * M_PI / 30. - M_PI;
-	P->k0 = 0.9996;
-	P->phi0 = 0.;
+    if (P->es == 0.0) {
+        proj_errno_set(P, PJD_ERR_ELLIPSOID_USE_REQUIRED);
+        return pj_default_destructor(P, ENOMEM);
+    }
+    if (P->lam0 < -1000.0 || P->lam0 > 1000.0) {
+        return pj_default_destructor(P, PJD_ERR_INVALID_UTM_ZONE);
+    }
+
+    P->y0 = pj_param (P->ctx, P->params, "bsouth").i ? 10000000. : 0.;
+    P->x0 = 500000.;
+    if (pj_param (P->ctx, P->params, "tzone").i) /* zone input ? */
+    {
+        zone = pj_param(P->ctx, P->params, "izone").i;
+        if (zone > 0 && zone <= 60)
+            --zone;
+        else {
+            return pj_default_destructor(P, PJD_ERR_INVALID_UTM_ZONE);
+        }
+    }
+    else /* nearest central meridian input */
+    {
+        zone = lround((floor ((adjlon (P->lam0) + M_PI) * 30. / M_PI)));
+        if (zone < 0)
+            zone = 0;
+        else if (zone >= 60)
+            zone = 59;
+    }
+    P->lam0 = (zone + .5) * M_PI / 30. - M_PI;
+    P->k0 = 0.9996;
+    P->phi0 = 0.;
 
     return setup (P);
 }
-
-
-#ifndef PJ_SELFTEST
-int pj_utm_selftest (void) {return 0;}
-#else
-
-int pj_utm_selftest (void) {
-    double tolerance_lp = 1e-10;
-    double tolerance_xy = 1e-7;
-
-    char e_args[] = {"+proj=utm   +ellps=GRS80  +lat_1=0.5 +lat_2=2 +n=0.5 +zone=30"};
-
-    LP fwd_in[] = {
-        { 2, 1},
-        { 2,-1},
-        {-2, 1},
-        {-2,-1}
-    };
-
-    XY e_fwd_expect[] = {
-        {1057002.4054912981,  110955.14117594929},
-        {1057002.4054912981,  -110955.14117594929},
-        {611263.81227890507,  110547.10569680421},
-        {611263.81227890507,  -110547.10569680421},
-    };
-
-    XY inv_in[] = {
-        { 200, 100},
-        { 200,-100},
-        {-200, 100},
-        {-200,-100}
-    };
-
-    LP e_inv_expect[] = {
-        {-7.4869520833902357,  0.00090193980983462605},
-        {-7.4869520833902357,  -0.00090193980983462605},
-        {-7.4905356820622613,  0.00090193535121489081},
-        {-7.4905356820622613,  -0.00090193535121489081},
-    };
-
-    return pj_generic_selftest (e_args, 0, tolerance_xy, tolerance_lp, 4, 4, fwd_in, e_fwd_expect, 0, inv_in, e_inv_expect, 0);
-}
-#endif
-
-
-

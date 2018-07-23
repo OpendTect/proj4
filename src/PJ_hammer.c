@@ -1,5 +1,10 @@
 #define PJ_LIB__
-#include <projects.h>
+
+#include <errno.h>
+#include <math.h>
+
+#include "proj.h"
+#include "projects.h"
 
 PROJ_HEAD(hammer, "Hammer & Eckert-Greifendorff")
     "\n\tMisc Sph, \n\tW= M=";
@@ -7,7 +12,7 @@ PROJ_HEAD(hammer, "Hammer & Eckert-Greifendorff")
 #define EPS 1.0e-10
 
 struct pj_opaque {
-    double w; \
+    double w;
     double m, rm;
 };
 
@@ -33,7 +38,7 @@ static LP s_inverse (XY xy, PJ *P) {           /* Spheroidal, inverse */
     if (fabs(2.*z*z-1.) < EPS) {
         lp.lam = HUGE_VAL;
         lp.phi = HUGE_VAL;
-        pj_errno = -14;
+        proj_errno_set(P, PJD_ERR_LAT_OR_LON_EXCEED_LIMIT);
     } else {
         lp.lam = aatan2(Q->w * xy.x * z,2. * z * z - 1)/Q->w;
         lp.phi = aasin(P->ctx,z * xy.y);
@@ -42,34 +47,20 @@ static LP s_inverse (XY xy, PJ *P) {           /* Spheroidal, inverse */
 }
 
 
-static void *freeup_new (PJ *P) {              /* Destructor */
-    if (0==P)
-        return 0;
-    if (0==P->opaque)
-        return pj_dealloc (P);
-
-    pj_dealloc (P->opaque);
-    return pj_dealloc(P);
-}
-
-static void freeup (PJ *P) {
-    freeup_new (P);
-    return;
-}
-
-
 PJ *PROJECTION(hammer) {
     struct pj_opaque *Q = pj_calloc (1, sizeof (struct pj_opaque));
     if (0==Q)
-        return freeup_new (P);
+        return pj_default_destructor (P, ENOMEM);
     P->opaque = Q;
 
     if (pj_param(P->ctx, P->params, "tW").i) {
-        if ((Q->w = fabs(pj_param(P->ctx, P->params, "dW").f)) <= 0.) E_ERROR(-27);
+        if ((Q->w = fabs(pj_param(P->ctx, P->params, "dW").f)) <= 0.)
+            return pj_default_destructor (P, PJD_ERR_W_OR_M_ZERO_OR_LESS);
     } else
         Q->w = .5;
     if (pj_param(P->ctx, P->params, "tM").i) {
-        if ((Q->m = fabs(pj_param(P->ctx, P->params, "dM").f)) <= 0.) E_ERROR(-27);
+        if ((Q->m = fabs(pj_param(P->ctx, P->params, "dM").f)) <= 0.)
+            return pj_default_destructor (P, PJD_ERR_W_OR_M_ZERO_OR_LESS);
     } else
         Q->m = 1.;
 
@@ -82,48 +73,3 @@ PJ *PROJECTION(hammer) {
 
     return P;
 }
-
-
-#ifndef PJ_SELFTEST
-int pj_hammer_selftest (void) {return 0;}
-#else
-
-int pj_hammer_selftest (void) {
-    double tolerance_lp = 1e-10;
-    double tolerance_xy = 1e-7;
-
-    char s_args[] = {"+proj=hammer   +a=6400000    +lat_1=0.5 +lat_2=2"};
-
-    LP fwd_in[] = {
-        { 2, 1},
-        { 2,-1},
-        {-2, 1},
-        {-2,-1}
-    };
-
-    XY s_fwd_expect[] = {
-        { 223373.78870324057,  111703.90739776699},
-        { 223373.78870324057, -111703.90739776699},
-        {-223373.78870324057,  111703.90739776699},
-        {-223373.78870324057, -111703.90739776699},
-    };
-
-    XY inv_in[] = {
-        { 200, 100},
-        { 200,-100},
-        {-200, 100},
-        {-200,-100}
-    };
-
-    LP s_inv_expect[] = {
-        { 0.001790493109965961,  0.00089524655487369749},
-        { 0.001790493109965961, -0.00089524655487369749},
-        {-0.001790493109965961,  0.00089524655487369749},
-        {-0.001790493109965961, -0.00089524655487369749},
-    };
-
-    return pj_generic_selftest (0, s_args, tolerance_xy, tolerance_lp, 4, 4, fwd_in, 0, s_fwd_expect, inv_in, 0, s_inv_expect);
-}
-
-
-#endif

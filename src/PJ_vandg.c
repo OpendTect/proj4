@@ -1,11 +1,11 @@
 #define PJ_LIB__
-#include <projects.h>
+#include "proj.h"
+#include "projects.h"
 
 PROJ_HEAD(vandg, "van der Grinten (I)") "\n\tMisc Sph";
 
 # define TOL        1.e-10
 # define THIRD      .33333333333333333333
-# define TWO_THRD   .66666666666666666666
 # define C2_27      .07407407407407407407
 # define PI4_3      4.18879020478639098458
 # define PISQ       9.86960440108935861869
@@ -18,7 +18,10 @@ static XY s_forward (LP lp, PJ *P) {           /* Spheroidal, forward */
     double  al, al2, g, g2, p2;
 
     p2 = fabs(lp.phi / M_HALFPI);
-    if ((p2 - TOL) > 1.) F_ERROR;
+    if ((p2 - TOL) > 1.) {
+        proj_errno_set(P, PJD_ERR_TOLERANCE_CONDITION);
+        return xy;
+    }
     if (p2 > 1.)
         p2 = 1.;
     if (fabs(lp.phi) <= TOL) {
@@ -41,7 +44,10 @@ static XY s_forward (LP lp, PJ *P) {           /* Spheroidal, forward */
         if (lp.lam < 0.) xy.x = -xy.x;
         xy.y = fabs(xy.x / M_PI);
         xy.y = 1. - xy.y * (xy.y + 2. * al);
-        if (xy.y < -TOL) F_ERROR;
+        if (xy.y < -TOL) {
+            proj_errno_set(P, PJD_ERR_TOLERANCE_CONDITION);
+            return xy;
+        }
         if (xy.y < 0.)
             xy.y = 0.;
         else
@@ -81,24 +87,12 @@ static LP s_inverse (XY xy, PJ *P) {           /* Spheroidal, inverse */
         t = r2 + TPISQ * (x2 - y2 + HPISQ);
         lp.lam = fabs(xy.x) <= TOL ? 0. :
            .5 * (r - PISQ + (t <= 0. ? 0. : sqrt(t))) / xy.x;
-    } else
-        I_ERROR;
+    } else {
+        proj_errno_set(P, PJD_ERR_TOLERANCE_CONDITION);
+        return lp;
+    }
 
     return lp;
-}
-
-
-static void *freeup_new (PJ *P) {                       /* Destructor */
-    if (0==P)
-        return 0;
-
-    return pj_dealloc(P);
-}
-
-
-static void freeup (PJ *P) {
-    freeup_new (P);
-    return;
 }
 
 
@@ -110,47 +104,3 @@ PJ *PROJECTION(vandg) {
     return P;
 }
 
-
-#ifndef PJ_SELFTEST
-int pj_vandg_selftest (void) {return 0;}
-#else
-
-int pj_vandg_selftest (void) {
-    double tolerance_lp = 1e-10;
-    double tolerance_xy = 1e-7;
-
-    char s_args[] = {"+proj=vandg   +a=6400000    +lat_1=0.5 +lat_2=2"};
-
-    LP fwd_in[] = {
-        { 2, 1},
-        { 2,-1},
-        {-2, 1},
-        {-2,-1}
-    };
-
-    XY s_fwd_expect[] = {
-        { 223395.24954340671,  111704.59663367498},
-        { 223395.24954340671, -111704.59663367498},
-        {-223395.24954340671,  111704.59663367498},
-        {-223395.24954340671, -111704.59663367498},
-    };
-
-    XY inv_in[] = {
-        { 200, 100},
-        { 200,-100},
-        {-200, 100},
-        {-200,-100}
-    };
-
-    LP s_inv_expect[] = {
-        { 0.001790493715929761,  0.00089524655486993867},
-        { 0.001790493715929761, -0.00089524655486993867},
-        {-0.001790493715929761,  0.00089524655486993867},
-        {-0.001790493715929761, -0.00089524655486993867},
-    };
-
-    return pj_generic_selftest (0, s_args, tolerance_xy, tolerance_lp, 4, 4, fwd_in, 0, s_fwd_expect, inv_in, 0, s_inv_expect);
-}
-
-
-#endif

@@ -24,7 +24,12 @@
 ** SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
 #define PJ_LIB__
-#include <projects.h>
+
+#include <errno.h>
+#include <math.h>
+
+#include "proj.h"
+#include "projects.h"
 
 struct pj_opaque {
     double s0;
@@ -78,21 +83,17 @@ static LP e_inverse (XY xy, PJ *P) {          /* Ellipsoidal, inverse */
 }
 
 
-static void *freeup_new (PJ *P) {                       /* Destructor */
+static void *destructor (PJ *P, int errlev) {
     if (0==P)
         return 0;
+
     if (0==P->opaque)
-        return pj_dealloc (P);
+        return pj_default_destructor (P, errlev);
 
     if (P->opaque->en)
         pj_dealloc (P->opaque->en);
-    pj_dealloc (P->opaque);
-    return pj_dealloc(P);
-}
 
-static void freeup (PJ *P) {
-    freeup_new (P);
-    return;
+    return pj_default_destructor (P, ENOMEM);
 }
 
 
@@ -101,11 +102,12 @@ PJ *PROJECTION(rouss) {
 
     struct pj_opaque *Q = pj_calloc (1, sizeof (struct pj_opaque));
     if (0==Q)
-        return freeup_new (P);
+        return pj_default_destructor(P, ENOMEM);
     P->opaque = Q;
 
     if (!((Q->en = proj_mdist_ini(P->es))))
-        E_ERROR_0;
+        return pj_default_destructor (P, ENOMEM);
+
     es2 = sin(P->phi0);
     Q->s0 = proj_mdist(P->phi0, es2, cos(P->phi0), Q->en);
     t = 1. - (es2 = P->es * es2 * es2);
@@ -148,51 +150,7 @@ PJ *PROJECTION(rouss) {
 
     P->fwd = e_forward;
     P->inv = e_inverse;
+    P->destructor = destructor;
 
     return P;
 }
-
-
-#ifndef PJ_SELFTEST
-int pj_rouss_selftest (void) {return 0;}
-#else
-
-int pj_rouss_selftest (void) {
-    double tolerance_lp = 1e-10;
-    double tolerance_xy = 1e-7;
-
-    char e_args[] = {"+proj=rouss   +ellps=GRS80  +lat_1=0.5 +lat_2=2"};
-
-    LP fwd_in[] = {
-        { 2, 1},
-        { 2,-1},
-        {-2, 1},
-        {-2,-1}
-    };
-
-    XY e_fwd_expect[] = {
-        { 222644.89413161727,  110611.09186837047},
-        { 222644.89413161727, -110611.09186837047},
-        {-222644.89413161727,  110611.09186837047},
-        {-222644.89413161727, -110611.09186837047},
-    };
-
-    XY inv_in[] = {
-        { 200, 100},
-        { 200,-100},
-        {-200, 100},
-        {-200,-100}
-    };
-
-    LP e_inv_expect[] = {
-        { 0.0017966305682019911,  0.00090436947683699559},
-        { 0.0017966305682019911, -0.00090436947683699559},
-        {-0.0017966305682019911,  0.00090436947683699559},
-        {-0.0017966305682019911, -0.00090436947683699559},
-    };
-
-    return pj_generic_selftest (e_args, 0, tolerance_xy, tolerance_lp, 4, 4, fwd_in, e_fwd_expect, 0, inv_in, e_inv_expect, 0);
-}
-
-
-#endif

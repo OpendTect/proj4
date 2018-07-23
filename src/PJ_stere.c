@@ -1,16 +1,26 @@
 #define PJ_LIB__
-#include    <projects.h>
+#include <errno.h>
+#include "proj.h"
+#include "projects.h"
+#include "proj_math.h"
 
 PROJ_HEAD(stere, "Stereographic") "\n\tAzi, Sph&Ell\n\tlat_ts=";
 PROJ_HEAD(ups, "Universal Polar Stereographic") "\n\tAzi, Sph&Ell\n\tsouth";
 
+
+enum Mode {
+    S_POLE = 0,
+    N_POLE = 1,
+    OBLIQ  = 2,
+    EQUIT  = 3
+};
 
 struct pj_opaque {
     double phits;
     double sinX1;
     double cosX1;
     double akm1;
-    int mode;
+    enum Mode mode;
 };
 
 #define sinph0  P->opaque->sinX1
@@ -19,10 +29,6 @@ struct pj_opaque {
 #define TOL 1.e-8
 #define NITER   8
 #define CONV    1.e-10
-#define S_POLE  0
-#define N_POLE  1
-#define OBLIQ   2
-#define EQUIT   3
 
 static double ssfn_ (double phit, double sinphi, double eccen) {
     sinphi *= eccen;
@@ -34,7 +40,7 @@ static double ssfn_ (double phit, double sinphi, double eccen) {
 static XY e_forward (LP lp, PJ *P) {          /* Ellipsoidal, forward */
     XY xy = {0.0,0.0};
     struct pj_opaque *Q = P->opaque;
-    double coslam, sinlam, sinX = 0.0, cosX = 0.0, X, A, sinphi;
+    double coslam, sinlam, sinX = 0.0, cosX = 0.0, X, A = 0.0, sinphi;
 
     coslam = cos (lp.lam);
     sinlam = sin (lp.lam);
@@ -52,8 +58,13 @@ static XY e_forward (LP lp, PJ *P) {          /* Ellipsoidal, forward */
         goto xmul; /* but why not just  xy.x = A * cosX; break;  ? */
 
     case EQUIT:
-        A = 2. * Q->akm1 / (1. + cosX * coslam);
-        xy.y = A * sinX;
+        /* avoid zero division */
+        if (1. + cosX * coslam == 0.0) {
+            xy.y = HUGE_VAL;
+        } else {
+            A = Q->akm1 / (1. + cosX * coslam);
+            xy.y = A * sinX;
+        }
 xmul:
         xy.x = A * cosX;
         break;
@@ -62,6 +73,7 @@ xmul:
         lp.phi = -lp.phi;
         coslam = - coslam;
         sinphi = -sinphi;
+        /*-fallthrough*/
     case N_POLE:
         xy.x = Q->akm1 * pj_tsfn (lp.phi, sinphi, P->e);
         xy.y = - xy.x * coslam;
@@ -90,7 +102,10 @@ static XY s_forward (LP lp, PJ *P) {           /* Spheroidal, forward */
     case OBLIQ:
         xy.y = 1. + sinph0 * sinphi + cosph0 * cosphi * coslam;
 oblcon:
-        if (xy.y <= EPS10) F_ERROR;
+        if (xy.y <= EPS10) {
+            proj_errno_set(P, PJD_ERR_TOLERANCE_CONDITION);
+            return xy;
+        }
         xy.x = (xy.y = Q->akm1 / xy.y) * cosphi * sinlam;
         xy.y *= (Q->mode == EQUIT) ? sinphi :
            cosph0 * sinphi - sinph0 * cosphi * coslam;
@@ -98,8 +113,12 @@ oblcon:
     case N_POLE:
         coslam = - coslam;
         lp.phi = - lp.phi;
+        /*-fallthrough*/
     case S_POLE:
-        if (fabs (lp.phi - M_HALFPI) < TOL) F_ERROR;
+        if (fabs (lp.phi - M_HALFPI) < TOL) {
+            proj_errno_set(P, PJD_ERR_TOLERANCE_CONDITION);
+            return xy;
+        }
         xy.x = sinlam * ( xy.y = Q->akm1 * tan (M_FORTPI + .5 * lp.phi) );
         xy.y *= coslam;
         break;
@@ -134,6 +153,7 @@ static LP e_inverse (XY xy, PJ *P) {          /* Ellipsoidal, inverse */
         break;
     case N_POLE:
         xy.y = -xy.y;
+        /*-fallthrough*/
     case S_POLE:
         phi_l = M_HALFPI - 2. * atan (tp = - rho / Q->akm1);
         halfpi = -M_HALFPI;
@@ -151,7 +171,9 @@ static LP e_inverse (XY xy, PJ *P) {          /* Ellipsoidal, inverse */
             return lp;
         }
     }
-    I_ERROR;
+
+    proj_errno_set(P, PJD_ERR_TOLERANCE_CONDITION);
+    return lp;
 }
 
 
@@ -183,6 +205,7 @@ static LP s_inverse (XY xy, PJ *P) {           /* Spheroidal, inverse */
         break;
     case N_POLE:
         xy.y = -xy.y;
+        /*-fallthrough*/
     case S_POLE:
         if (fabs (rh) <= EPS10)
             lp.phi = P->phi0;
@@ -192,19 +215,6 @@ static LP s_inverse (XY xy, PJ *P) {           /* Spheroidal, inverse */
         break;
     }
     return lp;
-}
-
-
-static void *freeup_new (PJ *P) {                       /* Destructor */
-    if (0==P)
-        return 0;
-    pj_dealloc (P->opaque);
-    return pj_dealloc(P);
-}
-
-static void freeup (PJ *P) {
-    freeup_new (P);
-    return;
 }
 
 
@@ -218,7 +228,7 @@ static PJ *setup(PJ *P) {                   /* general initialization */
         Q->mode = t > EPS10 ? OBLIQ : EQUIT;
     Q->phits = fabs (Q->phits);
 
-    if (P->es) {
+    if (P->es != 0.0) {
         double X;
 
         switch (Q->mode) {
@@ -251,6 +261,7 @@ static PJ *setup(PJ *P) {                   /* general initialization */
         case OBLIQ:
             sinph0 = sin (P->phi0);
             cosph0 = cos (P->phi0);
+            /*-fallthrough*/
         case EQUIT:
             Q->akm1 = 2. * P->k0;
             break;
@@ -272,7 +283,7 @@ static PJ *setup(PJ *P) {                   /* general initialization */
 PJ *PROJECTION(stere) {
     struct pj_opaque *Q = pj_calloc (1, sizeof (struct pj_opaque));
     if (0==Q)
-        return freeup_new (P);
+        return pj_default_destructor (P, ENOMEM);
     P->opaque = Q;
 
     Q->phits = pj_param (P->ctx, P->params, "tlat_ts").i ?
@@ -285,125 +296,21 @@ PJ *PROJECTION(stere) {
 PJ *PROJECTION(ups) {
     struct pj_opaque *Q = pj_calloc (1, sizeof (struct pj_opaque));
     if (0==Q)
-        return freeup_new (P);
+        return pj_default_destructor (P, ENOMEM);
     P->opaque = Q;
 
-	/* International Ellipsoid */
-	P->phi0 = pj_param(P->ctx, P->params, "bsouth").i ? - M_HALFPI: M_HALFPI;
-	if (!P->es) E_ERROR(-34);
-	P->k0 = .994;
-	P->x0 = 2000000.;
-	P->y0 = 2000000.;
-	Q->phits = M_HALFPI;
-	P->lam0 = 0.;
+    /* International Ellipsoid */
+    P->phi0 = pj_param(P->ctx, P->params, "bsouth").i ? - M_HALFPI: M_HALFPI;
+    if (P->es == 0.0) {
+        proj_errno_set(P, PJD_ERR_ELLIPSOID_USE_REQUIRED);
+        return pj_default_destructor (P, ENOMEM);
+    }
+    P->k0 = .994;
+    P->x0 = 2000000.;
+    P->y0 = 2000000.;
+    Q->phits = M_HALFPI;
+    P->lam0 = 0.;
 
     return setup(P);
 }
 
-
-#ifndef PJ_SELFTEST
-int pj_stere_selftest (void) {return 0;}
-#else
-
-int pj_stere_selftest (void) {
-    double tolerance_lp = 1e-10;
-    double tolerance_xy = 1e-7;
-
-    char e_args[] = {"+proj=stere   +ellps=GRS80  +lat_1=0.5 +lat_2=2 +n=0.5"};
-    char s_args[] = {"+proj=stere   +a=6400000    +lat_1=0.5 +lat_2=2 +n=0.5"};
-
-    LP fwd_in[] = {
-        { 2, 1},
-        { 2,-1},
-        {-2, 1},
-        {-2,-1}
-    };
-
-    XY e_fwd_expect[] = {
-        { 445289.70910023432,  221221.76694834774},
-        { 445289.70910023432, -221221.76694835056},
-        {-445289.70910023432,  221221.76694834774},
-        {-445289.70910023432, -221221.76694835056},
-    };
-
-    XY s_fwd_expect[] = {
-        { 223407.81025950745,  111737.938996443},
-        { 223407.81025950745, -111737.938996443},
-        {-223407.81025950745,  111737.938996443},
-        {-223407.81025950745, -111737.938996443},
-    };
-
-    XY inv_in[] = {
-        { 200, 100},
-        { 200,-100},
-        {-200, 100},
-        {-200,-100}
-    };
-
-    LP e_inv_expect[] = {
-        { 0.0017966305682022392,  0.00090436947502443507},
-        { 0.0017966305682022392, -0.00090436947502443507},
-        {-0.0017966305682022392,  0.00090436947502443507},
-        {-0.0017966305682022392, -0.00090436947502443507},
-    };
-
-    LP s_inv_expect[] = {
-        { 0.001790493109747395,  0.00089524655465513144},
-        { 0.001790493109747395, -0.00089524655465513144},
-        {-0.001790493109747395,  0.00089524655465513144},
-        {-0.001790493109747395, -0.00089524655465513144},
-    };
-
-    return pj_generic_selftest (e_args, s_args, tolerance_xy, tolerance_lp, 4, 4, fwd_in, e_fwd_expect, s_fwd_expect, inv_in, e_inv_expect, s_inv_expect);
-}
-
-
-#endif
-
-
-
-
-
-#ifndef PJ_SELFTEST
-int pj_ups_selftest (void) {return 0;}
-#else
-
-int pj_ups_selftest (void) {
-    double tolerance_lp = 1e-10;
-    double tolerance_xy = 1e-7;
-
-    char e_args[] = {"+proj=ups   +ellps=GRS80  +lat_1=0.5 +lat_2=2 +n=0.5"};
-
-    LP fwd_in[] = {
-        { 2, 1},
-        { 2,-1},
-        {-2, 1},
-        {-2,-1}
-    };
-
-    XY e_fwd_expect[] = {
-        {2433455.5634384668,  -10412543.301512826},
-        {2448749.1185681992,  -10850493.419804076},
-        {1566544.4365615332,  -10412543.301512826},
-        {1551250.8814318008,  -10850493.419804076},
-    };
-
-    XY inv_in[] = {
-        { 200, 100},
-        { 200,-100},
-        {-200, 100},
-        {-200,-100}
-    };
-
-    LP e_inv_expect[] = {
-        {-44.998567498074834,  64.9182362867341},
-        {-44.995702709112308,  64.917020250675748},
-        {-45.004297076028529,  64.915804280954518},
-        {-45.001432287066002,  64.914588377560719},
-    };
-
-    return pj_generic_selftest (e_args, 0, tolerance_xy, tolerance_lp, 4, 4, fwd_in, e_fwd_expect, 0, inv_in, e_inv_expect, 0);
-}
-
-
-#endif

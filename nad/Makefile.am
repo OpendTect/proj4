@@ -15,14 +15,16 @@ TESTIGN = $(NADPATH)/testIGNF
 
 pkgdata_DATA = GL27 nad.lst proj_def.dat nad27 nad83 world epsg esri \
 		esri.extra other.extra \
-		CH IGNF
+		CH IGNF \
+		ITRF2000 ITRF2008 ITRF2014
 
 EXTRA_DIST = GL27 nad.lst proj_def.dat nad27 nad83 pj_out27.dist pj_out83.dist td_out.dist \
 		test27 test83 world epsg esri tv_out.dist tf_out.dist \
 		testflaky testvarious testdatumfile testntv2 ntv2_out.dist \
 		esri.extra other.extra \
 		CH IGNF testIGNF proj_outIGNF.dist \
-		makefile.vc CMakeLists.txt
+		ITRF2000 ITRF2008 ITRF2014 \
+		makefile.vc CMakeLists.txt tests/test_nodata.gtx
 
 process-nad2bin:
 	@if [ -f $(NADPATH)/null.lla -a ! -f null ] || [ -f $(NADPATH)/conus.lla -a ! -f conus ] ; then \
@@ -48,7 +50,7 @@ install-data-local: process-nad2bin
 	else \
 	  echo "nad2nad NADCON source files not present"; \
 	fi
-	@for gridfile in $(NADPATH)/*.gsb $(NADPATH)/ntv1_can.dat dummy \
+	@for gridfile in $(NADPATH)/*.gsb $(NADPATH)/*.gtx $(NADPATH)/ntv1_can.dat dummy \
 	                 $(NADPATH)/alaska $(NADPATH)/conus $(NADPATH)/hawaii $(NADPATH)/null \
 	                 $(NADPATH)/prvi $(NADPATH)/stgeorge $(NADPATH)/stlrnc $(NADPATH)/stpaul \
 	                 $(NADPATH)/FL $(NADPATH)/MD $(NADPATH)/TN $(NADPATH)/WI $(NADPATH)/WO; do \
@@ -61,7 +63,7 @@ install-data-local: process-nad2bin
 check-local: process-nad2bin
 # Check if we are doing an out-of-tree build
 	@if test ! -f epsg; then \
-	  for gridfile in $(NADPATH)/*.gsb $(NADPATH)/ntv1_can.dat dummy ; do \
+	  for gridfile in $(NADPATH)/*.gsb $(NADPATH)/*.gtx $(NADPATH)/ntv1_can.dat dummy ; do \
 	    if test "$$gridfile" != "dummy" -a -f "$$gridfile" ; then \
 	      cp $$gridfile .; \
 	    fi; \

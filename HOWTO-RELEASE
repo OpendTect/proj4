@@ -1,0 +1,78 @@
+	Preparing a PROJ.4 Release
+	==========================
+
+1) Update the version number in configure.ac (in AC_INIT()).
+
+   1a) Update the version number in PROJ_BUILD_VERSION in CMakeLists.txt
+   1b) Update the version number in doc/source/conf.py
+   1c) Update version numbers in man pages in man/man1/ and man/man3/
+
+2) Update the version number in proj_api.h (#define PJ_VERSION).
+
+   2a) Update PROJ_VERSION_MAJOR, PROJ_VERSION_MINOR and PROJ_VERSION_PATCH
+       in src/proj.h
+
+3) Update the version number, and date in src/pj_release.c.
+
+4) Update the version number in the -version-info definition in
+   src/Makefile.am.  It consists of "current:revision:age".
+
+   4a) Increment PROJ_BUILD_VERSION in CMakeLists.txt to follow
+       libtool versioning
+
+   - If the library source code has changed at all since the last update,
+     then increment revision (c:r:a becomes c:r+1:a).
+
+   - If any interfaces have been added, removed, or changed since the last
+     update, increment current, and set revision to 0.
+
+   - If any interfaces have been added since the last public release, then
+     increment age.
+
+   - If any interfaces have been removed since the last public release, then
+     set age to 0.
+
+4.5) Run "autogen.sh" (hopefully on the same machine it was last run on)
+
+5) Update man pages:
+
+    ./scripts/update_man.sh
+
+   The script builds man pages from Sphinx docs, copies them to man/ and commits
+   them to git.
+
+6) Add a note to the ChangeLog that a new release is being issued, and what
+   the release number is.
+
+7) Update NEWS file with summary of release changes.
+
+8) Update the year in CITATION
+
+9) If this is a major release, prepare a branch.
+
+   git checkout -b 5.0
+
+10) Tag the release
+
+   git tag 5.0.0
+
+11) Do a "make dist-all" in the proj root directory.  After some grinding
+   this should result in files like proj-4.4.3.tar.gz and proj-4.4.3.zip
+   being created.  These are full source distributions.
+
+12) Put these in the proj ftp area on /osgeo/download/proj on
+   download.osgeo.org.  This can be done via scp using a command like the
+   following.
+
+  scp proj-4.4.3.{tar.gz,zip} warmerdam@download.osgeo.org:/osgeo/download/proj
+
+13) Announce the new release on the PROJ.4 and MetaCRS mailing lists.
+
+14) Issue a new release report on GitHub:
+
+   https://github.com/OSGeo/proj.4/releases/new
+
+NOTES:
+
+ o Information about preparing binary releases, and RPMs should be formalized.
+ o A "beta" release step should likely be incorporated.

@@ -1,11 +1,11 @@
 /* evaluate complex polynomial */
-#include <projects.h>
+#include "projects.h"
 /* note: coefficients are always from C_1 to C_n
 **	i.e. C_0 == (0., 0)
 **	n should always be >= 1 though no checks are made
 */
 	COMPLEX
-pj_zpoly1(COMPLEX z, COMPLEX *C, int n) {
+pj_zpoly1(COMPLEX z, const COMPLEX *C, int n) {
 	COMPLEX a;
 	double t;
 
@@ -20,7 +20,7 @@ pj_zpoly1(COMPLEX z, COMPLEX *C, int n) {
 }
 /* evaluate complex polynomial and derivative */
 	COMPLEX
-pj_zpolyd1(COMPLEX z, COMPLEX *C, int n, COMPLEX *der) {
+pj_zpolyd1(COMPLEX z, const COMPLEX *C, int n, COMPLEX *der) {
 	COMPLEX a, b;
 	double t;
 	int first = 1;

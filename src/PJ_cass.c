@@ -1,9 +1,13 @@
 #define PJ_LIB__
-# include   <projects.h>
+
+#include <errno.h>
+#include <math.h>
+
+#include "projects.h"
+
 PROJ_HEAD(cass, "Cassini") "\n\tCyl, Sph&Ell";
 
 
-# define EPS10  1e-10
 # define C1 .16666666666666666666
 # define C2 .00833333333333333333
 # define C3 .04166666666666666666
@@ -77,22 +81,18 @@ static LP s_inverse (XY xy, PJ *P) {           /* Spheroidal, inverse */
     return lp;
 }
 
-
-static void *freeup_new(PJ *P) {                        /* Destructor */
+static void *destructor (PJ *P, int errlev) {                        /* Destructor */
     if (0==P)
         return 0;
+
     if (0==P->opaque)
-        return pj_dealloc (P);
+        return pj_default_destructor (P, errlev);
 
-    pj_dealloc(P->opaque->en);
-    pj_dealloc(P->opaque);
-    return pj_dealloc(P);
+    pj_dealloc (P->opaque->en);
+    return pj_default_destructor (P, errlev);
 }
 
-static void freeup(PJ *P) {                             /* Destructor */
-    freeup_new (P);
-    return;
-}
+
 
 PJ *PROJECTION(cass) {
 
@@ -106,11 +106,12 @@ PJ *PROJECTION(cass) {
     /* otherwise it's ellipsoidal */
     P->opaque = pj_calloc (1, sizeof (struct pj_opaque));
     if (0==P->opaque)
-        return freeup_new (P);
+        return pj_default_destructor (P, ENOMEM);
+    P->destructor = destructor;
 
     P->opaque->en = pj_enfn (P->es);
     if (0==P->opaque->en)
-        return freeup_new (P);
+        return pj_default_destructor (P, ENOMEM);
 
     P->opaque->m0 = pj_mlfn (P->phi0,  sin (P->phi0),  cos (P->phi0),  P->opaque->en);
     P->inv = e_inverse;
@@ -118,61 +119,3 @@ PJ *PROJECTION(cass) {
 
     return P;
 }
-
-
-#ifndef PJ_SELFTEST
-int pj_cass_selftest (void) {return 0;}
-#else
-
-int pj_cass_selftest (void) {
-    double tolerance_lp = 1e-10;
-    double tolerance_xy = 1e-7;
-
-    char e_args[] = {"+proj=cass   +ellps=GRS80  +lat_1=0.5 +lat_2=2"};
-    char s_args[] = {"+proj=cass   +a=6400000    +lat_1=0.5 +lat_2=2"};
-
-    LP fwd_in[] = {
-        { 2, 1},
-        { 2,-1},
-        {-2, 1},
-        {-2,-1}
-    };
-
-    XY e_fwd_expect[] = {
-        { 222605.28577699114,   110642.22925399939},
-        { 222605.28577699114,  -110642.22925399939},
-        {-222605.28577699114,   110642.22925399939},
-        {-222605.28577699114,  -110642.22925399939},
-    };
-
-    XY s_fwd_expect[] = {
-        { 223368.10520348375,  111769.14504058579},
-        { 223368.10520348375, -111769.14504058579},
-        {-223368.10520348375,  111769.14504058579},
-        {-223368.10520348375, -111769.14504058579},
-    };
-
-    XY inv_in[] = {
-        { 200, 100},
-        { 200,-100},
-        {-200, 100},
-        {-200,-100}
-    };
-
-    LP e_inv_expect[] = {
-        { 0.0017966305684613522,   0.00090436947663183841},
-        { 0.0017966305684613522,  -0.00090436947663183841},
-        {-0.0017966305684613522,   0.00090436947663183841},
-        {-0.0017966305684613522,  -0.00090436947663183841},
-    };
-
-    LP s_inv_expect[] = {
-        { 0.0017904931100023887,   0.00089524655445477922},
-        { 0.0017904931100023887,  -0.00089524655445477922},
-        {-0.0017904931100023887,   0.00089524655445477922},
-        {-0.0017904931100023887,  -0.00089524655445477922},
-    };
-
-    return pj_generic_selftest (e_args, s_args, tolerance_xy, tolerance_lp, 4, 4, fwd_in, e_fwd_expect, s_fwd_expect, inv_in, e_inv_expect, s_inv_expect);
-}
-#endif

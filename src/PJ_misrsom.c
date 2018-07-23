@@ -21,7 +21,12 @@
  *****************************************************************************/
 /* based upon Snyder and Linck, USGS-NMD */
 #define PJ_LIB__
-#include <projects.h>
+
+#include <errno.h>
+#include <math.h>
+
+#include "proj.h"
+#include "projects.h"
 
 PROJ_HEAD(misrsom, "Space oblique for MISR")
         "\n\tCyl, Sph&Ell\n\tpath=";
@@ -59,22 +64,27 @@ static XY e_forward (LP lp, PJ *P) {          /* Ellipsoidal, forward */
     XY xy = {0.0,0.0};
     struct pj_opaque *Q = P->opaque;
     int l, nn;
-    double lamt, xlam, sdsq, c, d, s, lamdp, phidp, lampp, tanph;
-    double lamtp, cl, sd, sp, fac, sav, tanphi;
+    double lamt = 0.0, xlam, sdsq, c, d, s, lamdp = 0.0, phidp, lampp, tanph;
+    double lamtp, cl, sd, sp, sav, tanphi;
 
     if (lp.phi > M_HALFPI)
         lp.phi = M_HALFPI;
     else if (lp.phi < -M_HALFPI)
         lp.phi = -M_HALFPI;
-    lampp = lp.phi >= 0. ? M_HALFPI : M_PI_HALFPI;
+    if (lp.phi >= 0. )
+        lampp = M_HALFPI;
+    else
+        lampp = M_PI_HALFPI;
     tanphi = tan(lp.phi);
     for (nn = 0;;) {
+            double fac;
             sav = lampp;
             lamtp = lp.lam + Q->p22 * lampp;
             cl = cos(lamtp);
-            if (fabs(cl) < TOL)
-                lamtp -= TOL;
-            fac = lampp - sin(lampp) * (cl < 0. ? -M_HALFPI : M_HALFPI);
+            if( cl < 0 )
+                fac = lampp + sin(lampp) * M_HALFPI;
+            else
+                fac = lampp - sin(lampp) * M_HALFPI;
             for (l = 50; l; --l) {
                     lamt = lp.lam + Q->p22 * sav;
                     if (fabs(c = cos(lamt)) < TOL)
@@ -156,33 +166,19 @@ static LP e_inverse (XY xy, PJ *P) {          /* Ellipsoidal, inverse */
 }
 
 
-static void *freeup_new (PJ *P) {                       /* Destructor */
-    if (0==P)
-        return 0;
-    if (0==P->opaque)
-        return pj_dealloc (P);
-
-    pj_dealloc (P->opaque);
-    return pj_dealloc(P);
-}
-
-static void freeup (PJ *P) {
-    freeup_new (P);
-    return;
-}
-
-
 PJ *PROJECTION(misrsom) {
     int path;
     double lam, alf, esc, ess;
 
     struct pj_opaque *Q = pj_calloc (1, sizeof (struct pj_opaque));
     if (0==Q)
-        return freeup_new (P);
+        return pj_default_destructor (P, ENOMEM);
     P->opaque = Q;
 
     path = pj_param(P->ctx, P->params, "ipath").i;
-    if (path <= 0 || path > 233) E_ERROR(-29);
+    if (path <= 0 || path > 233)
+        return pj_default_destructor(P, PJD_ERR_PATH_NOT_IN_RANGE);
+
     P->lam0 = DEG_TO_RAD * 129.3056 - M_TWOPI / 233. * path;
     alf = 98.30382 * DEG_TO_RAD;
     Q->p22 = 98.88 / 1440.0;
@@ -219,63 +215,3 @@ PJ *PROJECTION(misrsom) {
 
    return P;
 }
-
-
-#ifndef PJ_SELFTEST
-int pj_misrsom_selftest (void) {return 0;}
-#else
-
-int pj_misrsom_selftest (void) {
-    double tolerance_lp = 1e-10;
-    double tolerance_xy = 1e-7;
-
-    char e_args[] = {"+proj=misrsom   +ellps=GRS80  +lat_1=0.5 +lat_2=2 +path=1"};
-    char s_args[] = {"+proj=misrsom   +a=6400000    +lat_1=0.5 +lat_2=2 +path=1"};
-
-    LP fwd_in[] = {
-        { 2, 1},
-        { 2,-1},
-        {-2, 1},
-        {-2,-1}
-    };
-
-    XY e_fwd_expect[] = {
-        {18556630.3683698252, 9533394.6753112711},
-        {19041866.0067297369, 9707182.17532352544},
-        {18816810.1301847994, 8647669.64980295487},
-        {19252610.7845367305, 8778164.08580140397},
-    };
-
-    XY s_fwd_expect[] = {
-        {18641249.2791703865, 9563342.53233416565},
-        {19130982.4615812786, 9739539.59350463562},
-        {18903483.5150115378, 8675064.50061797537},
-        {19343388.3998006098, 8807471.90406848863},
-    };
-
-    XY inv_in[] = {
-        { 200, 100},
-        { 200,-100},
-        {-200, 100},
-        {-200,-100}
-    };
-
-    LP e_inv_expect[] = {
-        {127.759503987730625,  0.00173515039622462014},
-        {127.761295471077958,  0.00187196632421706517},
-        {127.759775773557251, -0.00187196632421891525},
-        {127.76156725690457,  -0.00173515039622462014},
-    };
-
-    LP s_inv_expect[] = {
-        {127.75950514818588,   0.00171623111593511971},
-        {127.761290323778738,  0.00185412132880796244},
-        {127.759780920856471, -0.00185412132880796244},
-        {127.761566096449329, -0.00171623111593511971},
-    };
-
-    return pj_generic_selftest (e_args, s_args, tolerance_xy, tolerance_lp, 4, 4, fwd_in, e_fwd_expect, s_fwd_expect, inv_in, e_inv_expect, s_inv_expect);
-}
-
-
-#endif

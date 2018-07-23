@@ -1,5 +1,9 @@
 #define PJ_LIB__
-#include <projects.h>
+
+#include <errno.h>
+#include <math.h>
+
+#include "projects.h"
 
 PROJ_HEAD(labrd, "Laborde") "\n\tCyl, Sph\n\tSpecial for Madagascar";
 #define EPS 1.e-10
@@ -46,7 +50,10 @@ static XY e_forward (LP lp, PJ *P) {          /* Ellipsoidal, forward */
 static LP e_inverse (XY xy, PJ *P) {          /* Ellipsoidal, inverse */
     LP lp = {0.0,0.0};
     struct pj_opaque *Q = P->opaque;
-    double x2, y2, V1, V2, V3, V4, t, t2, ps, pe, tpe, s;
+    /* t = 0.0 optimization is to avoid a false positive cppcheck warning */
+    /* (cppcheck git beaf29c15867984aa3c2a15cf15bd7576ccde2b3). Might no */
+    /* longer be necessary with later versions. */
+    double x2, y2, V1, V2, V3, V4, t = 0.0, t2, ps, pe, tpe, s;
     double I7, I8, I9, I10, I11, d, Re;
     int i;
 
@@ -60,6 +67,7 @@ static LP e_inverse (XY xy, PJ *P) {          /* Ellipsoidal, inverse */
     xy.y +=   Q->Cb * V1 - Q->Ca * V2 - Q->Cd * V3 + Q->Cc * V4;
     ps = Q->p0s + xy.y / Q->kRg;
     pe = ps + P->phi0 - Q->p0s;
+
     for ( i = 20; i; --i) {
         V1 = Q->A * log(tan(M_FORTPI + .5 * pe));
         tpe = P->e * sin(pe);
@@ -91,28 +99,11 @@ static LP e_inverse (XY xy, PJ *P) {          /* Ellipsoidal, inverse */
 }
 
 
-static void *freeup_new (PJ *P) {                       /* Destructor */
-    if (0==P)
-        return 0;
-    if (0==P->opaque)
-        return pj_dealloc (P);
-
-    pj_dealloc (P->opaque);
-    return pj_dealloc(P);
-}
-
-
-static void freeup (PJ *P) {
-    freeup_new (P);
-    return;
-}
-
-
 PJ *PROJECTION(labrd) {
     double Az, sinp, R, N, t;
     struct pj_opaque *Q = pj_calloc (1, sizeof (struct pj_opaque));
     if (0==Q)
-        return freeup_new (P);
+        return pj_default_destructor (P, ENOMEM);
     P->opaque = Q;
 
     Q->rot  = pj_param(P->ctx, P->params, "bno_rot").i == 0;
@@ -139,48 +130,3 @@ PJ *PROJECTION(labrd) {
 
     return P;
 }
-
-
-#ifndef PJ_SELFTEST
-int pj_labrd_selftest (void) {return 0;}
-#else
-
-int pj_labrd_selftest (void) {
-    double tolerance_lp = 1e-10;
-    double tolerance_xy = 1e-7;
-
-    char e_args[] = {"+proj=labrd   +ellps=GRS80  +lon_0=0.5 +lat_0=2"};
-
-    LP fwd_in[] = {
-        { 2, 1},
-        { 2,-1},
-        {-2, 1},
-        {-2,-1}
-    };
-
-    XY e_fwd_expect[] = {
-        { 166973.166090228391, -110536.912730266107},
-        { 166973.168287157256, -331761.993650884193},
-        {-278345.500519976194, -110469.032642031714},
-        {-278345.504185269645, -331829.870790275279},
-    };
-
-    XY inv_in[] = {
-        { 200, 100},
-        { 200,-100},
-        {-200, 100},
-        {-200,-100}
-    };
-
-    LP e_inv_expect[] = {
-        {0.501797719349373672, 2.00090435742047923},
-        {0.501797717380853658, 1.99909564058898681},
-        {0.498202280650626328, 2.00090435742047923},
-        {0.498202282619146342, 1.99909564058898681},
-    };
-
-    return pj_generic_selftest (e_args, 0, tolerance_xy, tolerance_lp, 4, 4, fwd_in, e_fwd_expect, 0, inv_in, e_inv_expect, 0);
-}
-
-
-#endif

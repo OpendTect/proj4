@@ -1,7 +1,8 @@
 dnl Process this file with autoconf to produce a configure script.
 
 AC_PREREQ(2.59)
-AC_INIT([PROJ.4 Projections], 4.9.3, [warmerdam@pobox.com], proj)
+AC_INIT([PROJ], [5.1.0],
+        [https://github.com/OSGeo/proj.4/issues], proj, [http://proj4.org])
 AC_CONFIG_MACRO_DIR([m4])
 AC_LANG(C)
 
@@ -21,10 +22,37 @@ AC_PROG_MAKE_SET
 AM_PROG_LIBTOOL
 
 dnl Checks for libraries.
+save_CFLAGS="$CFLAGS"
+CFLAGS=`echo "$CFLAGS" | sed "s/-Werror/ /"`
 AC_CHECK_LIB(m,exp,,,)
+CFLAGS="$save_CFLAGS"
 
 dnl We check for headers
 AC_HEADER_STDC
+
+dnl Check flag for accurate arithmetic with Intel compiler.  This is
+dnl needed to stop the compiler from ignoring parentheses in expressions
+dnl like (a + b) + c and from simplifying 0.0 + x to x (which is wrong if
+dnl x = -0.0).
+AX_CHECK_COMPILE_FLAG([-fp-model precise],
+        [CFLAGS="$CFLAGS -fp-model precise"],,[-Werror])
+dnl Check for C99 math functions
+save_CFLAGS="$CFLAGS"
+CFLAGS="$CFLAGS -Wall -Werror"
+AC_MSG_CHECKING([for C99 math functions])
+AC_LINK_IFELSE([AC_LANG_PROGRAM(
+        [#include <math.h>],
+        [int q;
+         return (int)(hypot(3.0, 4.0) + atanh(0.8) + cbrt(8.0) +
+                      remquo(100.0, 90.0, &q) +
+                      remainder(100.0, 90.0) + copysign(1.0, -0.0) +
+                      log1p(0.1) + asinh(0.1)) +
+		      isnan(0.0);])],
+        [AC_MSG_RESULT([yes]);C99_MATH="-DHAVE_C99_MATH=1"],
+        [AC_MSG_RESULT([no]);C99_MATH="-DHAVE_C99_MATH=0"])
+CFLAGS="$save_CFLAGS $C99_MATH"
+
+AC_SEARCH_LIBS([sqrt], [m])
 
 AC_CHECK_FUNC(localeconv, [AC_DEFINE(HAVE_LOCALECONV,1,[Define to 1 if you have localeconv])])
 
@@ -88,8 +116,8 @@ dnl posix mutexes for instance).
 dnl ---------------------------------------------------------------------------
 
 AC_ARG_WITH([mutex],
-	    AS_HELP_STRING([--without-mutex],
-	       [Disable real mutex locks (lacking pthreads)]),,)
+            AS_HELP_STRING([--without-mutex],
+               [Disable real mutex locks (lacking pthreads)]),,)
 
 AC_MSG_CHECKING([for mutexes])
 THREAD_LIB=""
@@ -114,8 +142,9 @@ AC_SUBST(MUTEX_SETTING,$MUTEX_SETTING)
 AC_SUBST(THREAD_LIB,$THREAD_LIB)
 
 AC_CONFIG_FILES([Makefile cmake/Makefile src/Makefile
+                 test/Makefile test/gie/Makefile test/gigs/Makefile
                  man/Makefile man/man1/Makefile man/man3/Makefile nad/Makefile
-                 jniwrap/Makefile jniwrap/org/Makefile jniwrap/org/proj4/Makefile])
+                 jniwrap/Makefile jniwrap/org.osgeo.proj/Makefile jniwrap/org.osgeo.proj/org/Makefile jniwrap/org.osgeo.proj/org/proj4/Makefile])
 AC_CONFIG_FILES([nad/install], [chmod +x nad/install])
 
 AC_CONFIG_FILES([proj.pc])

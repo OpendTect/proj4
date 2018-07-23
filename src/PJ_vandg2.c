@@ -1,5 +1,9 @@
 #define PJ_LIB__
-#include <projects.h>
+
+#include <errno.h>
+#include <math.h>
+
+#include "projects.h"
 
 struct pj_opaque {
     int vdg3;
@@ -44,27 +48,10 @@ static XY s_forward (LP lp, PJ *P) {           /* Spheroidal, forward */
 }
 
 
-static void *freeup_new (PJ *P) {                       /* Destructor */
-    if (0==P)
-        return 0;
-    if (0==P->opaque)
-        return pj_dealloc (P);
-
-    pj_dealloc (P->opaque);
-    return pj_dealloc(P);
-}
-
-
-static void freeup (PJ *P) {
-    freeup_new (P);
-    return;
-}
-
-
 PJ *PROJECTION(vandg2) {
     struct pj_opaque *Q = pj_calloc (1, sizeof (struct pj_opaque));
     if (0==Q)
-        return freeup_new (P);
+        return pj_default_destructor (P, ENOMEM);
     P->opaque = Q;
 
     Q->vdg3 = 0;
@@ -76,7 +63,7 @@ PJ *PROJECTION(vandg2) {
 PJ *PROJECTION(vandg3) {
     struct pj_opaque *Q = pj_calloc (1, sizeof (struct pj_opaque));
     if (0==Q)
-        return freeup_new (P);
+        return pj_default_destructor (P, ENOMEM);
     P->opaque = Q;
 
     Q->vdg3 = 1;
@@ -85,64 +72,3 @@ PJ *PROJECTION(vandg3) {
 
     return P;
 }
-
-
-#ifndef PJ_SELFTEST
-int pj_vandg2_selftest (void) {return 0;}
-#else
-
-int pj_vandg2_selftest (void) {
-    double tolerance_lp = 1e-10;
-    double tolerance_xy = 1e-7;
-
-    char s_args[] = {"+proj=vandg2   +a=6400000    +lat_1=0.5 +lat_2=2"};
-
-    LP fwd_in[] = {
-        { 2, 1},
-        { 2,-1},
-        {-2, 1},
-        {-2,-1}
-    };
-
-    XY s_fwd_expect[] = {
-        { 223395.24785043663,  111718.49103722633},
-        { 223395.24785043663, -111718.49103722633},
-        {-223395.24785043663,  111718.49103722633},
-        {-223395.24785043663, -111718.49103722633},
-    };
-
-    return pj_generic_selftest (0, s_args, tolerance_xy, tolerance_lp, 4, 4, fwd_in, 0, s_fwd_expect, 0, 0, 0);
-}
-
-
-#endif
-
-#ifndef PJ_SELFTEST
-int pj_vandg3_selftest (void) {return 0;}
-#else
-
-int pj_vandg3_selftest (void) {
-    double tolerance_lp = 1e-10;
-    double tolerance_xy = 1e-7;
-
-    char s_args[] = {"+proj=vandg3   +a=6400000    +lat_1=0.5 +lat_2=2"};
-
-    LP fwd_in[] = {
-        { 2, 1},
-        { 2,-1},
-        {-2, 1},
-        {-2,-1}
-    };
-
-    XY s_fwd_expect[] = {
-        { 223395.24955283134,  111704.51990442065},
-        { 223395.24955283134, -111704.51990442065},
-        {-223395.24955283134,  111704.51990442065},
-        {-223395.24955283134, -111704.51990442065},
-    };
-
-    return pj_generic_selftest (0, s_args, tolerance_xy, tolerance_lp, 4, 4, fwd_in, 0, s_fwd_expect, 0, 0, 0);
-}
-
-
-#endif

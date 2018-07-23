@@ -28,9 +28,10 @@
 
 #define PJ_LIB__
 
-#include <projects.h>
+#include <stdio.h>
 #include <string.h>
-#include <math.h>
+
+#include "projects.h"
 
 /************************************************************************/
 /*                           pj_is_latlong()                            */
@@ -113,7 +114,7 @@ PJ *pj_latlong_from_proj( PJ *pj_in )
     }
     else
     {
-        pj_ctx_set_errno( pj_in->ctx, -13 );
+        pj_ctx_set_errno( pj_in->ctx, PJD_ERR_MAJOR_AXIS_NOT_GIVEN );
 
         return NULL;
     }

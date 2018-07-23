@@ -1,8 +1,8 @@
 ##############################################
 ### SWITCH BETWEEN STATIC OR SHARED LIBRARY###
 ##############################################
-#colormsg(_HIBLUE_ "Configuring proj library:")
-#message(STATUS "")
+colormsg(_HIBLUE_ "Configuring proj library:")
+message(STATUS "")
 
 # default config, shared on unix and static on Windows
 if(UNIX)
@@ -26,17 +26,15 @@ endif(NOT USE_THREAD)
 find_package(Threads QUIET)
 if(USE_THREAD AND Threads_FOUND AND CMAKE_USE_WIN32_THREADS_INIT )
    add_definitions( -DMUTEX_win32)
-endif(USE_THREAD AND Threads_FOUND AND CMAKE_USE_WIN32_THREADS_INIT )
-if(USE_THREAD AND Threads_FOUND AND CMAKE_USE_PTHREADS_INIT )
+elseif(USE_THREAD AND Threads_FOUND AND CMAKE_USE_PTHREADS_INIT )
    add_definitions( -DMUTEX_pthread)
-endif(USE_THREAD AND Threads_FOUND AND CMAKE_USE_PTHREADS_INIT )
-if(USE_THREAD AND NOT Threads_FOUND)
+elseif(USE_THREAD AND NOT Threads_FOUND)
   message(FATAL_ERROR "No thread library found and thread/mutex support is required by USE_THREAD option")
-endif(USE_THREAD AND NOT Threads_FOUND)
+endif()
 
 
 ##############################################
-### librairie source list and include_list ###
+###  library source list and include_list  ###
 ##############################################
 SET(SRC_LIBPROJ_PJ
         nad_init.c
@@ -45,18 +43,22 @@ SET(SRC_LIBPROJ_PJ
         PJ_airy.c
         PJ_aitoff.c
         PJ_august.c
+        PJ_axisswap.c
         PJ_bacon.c
         PJ_bipc.c
         PJ_boggs.c
         PJ_bonne.c
         PJ_calcofi.c
+        PJ_cart.c
         PJ_cass.c
         PJ_cc.c
+        PJ_ccon.c
         PJ_cea.c
         PJ_chamb.c
         PJ_collg.c
         PJ_comill.c
         PJ_crast.c
+        PJ_deformation.c
         PJ_denoy.c
         PJ_eck1.c
         PJ_eck2.c
@@ -68,6 +70,7 @@ SET(SRC_LIBPROJ_PJ
         PJ_fahey.c
         PJ_fouc_s.c
         PJ_gall.c
+        PJ_geoc.c
         PJ_geos.c
         PJ_gins8.c
         PJ_gnom.c
@@ -76,6 +79,9 @@ SET(SRC_LIBPROJ_PJ
         PJ_gstmerc.c
         PJ_hammer.c
         PJ_hatano.c
+        PJ_helmert.c
+        PJ_hgridshift.c
+        PJ_horner.c
         PJ_igh.c
         PJ_isea.c
         PJ_imw_p.c
@@ -85,6 +91,7 @@ SET(SRC_LIBPROJ_PJ
         PJ_lagrng.c
         PJ_larr.c
         PJ_lask.c
+        PJ_latlong.c
         PJ_lcca.c
         PJ_lcc.c
         PJ_loxim.c
@@ -97,6 +104,7 @@ SET(SRC_LIBPROJ_PJ
         PJ_mill.c
         PJ_mod_ster.c
         PJ_moll.c
+        PJ_molodensky.c
         PJ_natearth.c
         PJ_natearth2.c
         PJ_nell.c
@@ -110,6 +118,7 @@ SET(SRC_LIBPROJ_PJ
         PJ_omerc.c
         PJ_ortho.c
         PJ_patterson.c
+        PJ_pipeline.c
         PJ_poly.c
         PJ_putp2.c
         PJ_putp3.c
@@ -130,11 +139,13 @@ SET(SRC_LIBPROJ_PJ
         PJ_times.c
         PJ_tmerc.c
         PJ_tpeqd.c
+        PJ_unitconvert.c
         PJ_urm5.c
         PJ_urmfps.c
         PJ_vandg.c
         PJ_vandg2.c
         PJ_vandg4.c
+        PJ_vgridshift.c
         PJ_wag2.c
         PJ_wag3.c
         PJ_wag7.c
@@ -172,10 +183,8 @@ SET(SRC_LIBPROJ_CORE
         pj_errno.c
         pj_factors.c
         pj_fwd.c
-        pj_fwd3d.c
         pj_gauss.c
         pj_gc_reader.c
-        pj_generic_selftest.c
         pj_geocent.c
         pj_gridcatalog.c
         pj_gridinfo.c
@@ -184,22 +193,23 @@ SET(SRC_LIBPROJ_CORE
         pj_init.c
         pj_initcache.c
         pj_inv.c
-        pj_inv3d.c
-        pj_latlong.c
         pj_list.c
         pj_list.h
         pj_log.c
         pj_malloc.c
+        pj_math.c
         pj_mlfn.c
         pj_msfn.c
         pj_mutex.c
+        proj_4D_api.c
+        pj_internal.c
+        proj_internal.h
         pj_open_lib.c
         pj_param.c
         pj_phi2.c
         pj_pr_list.c
         pj_qsfn.c
         pj_release.c
-        pj_run_selftests.c
         pj_strerrno.c
         pj_transform.c
         pj_tsfn.c
@@ -207,6 +217,7 @@ SET(SRC_LIBPROJ_CORE
         pj_utils.c
         pj_zpoly1.c
         proj_mdist.c
+        proj_math.h
         proj_rouss.c
         rtodms.c
         vector1.c
@@ -217,6 +228,7 @@ SET(SRC_LIBPROJ_CORE
 set(HEADERS_LIBPROJ
         projects.h
         proj_api.h
+        proj.h
         geodesic.h
 )
 
@@ -239,17 +251,16 @@ find_package(JNI QUIET)
 if(JNI_SUPPORT AND NOT JNI_FOUND)
   message(FATAL_ERROR "jni support is required but jni is not found")
 endif(JNI_SUPPORT AND NOT JNI_FOUND)
-#boost_report_value(JNI_SUPPORT)
+boost_report_value(JNI_SUPPORT)
 if(JNI_SUPPORT)
   set(SRC_LIBPROJ_CORE ${SRC_LIBPROJ_CORE}
                        jniproj.c )
   set(HEADERS_LIBPROJ ${HEADERS_LIBPROJ}
-                        org_proj4_PJ.h
-                        org_proj4_Projections.h)
+                        org_proj4_PJ.h)
   source_group("Source Files\\JNI" FILES ${SRC_LIBPROJ_JNI})
   add_definitions(-DJNI_ENABLED)
   include_directories( ${JNI_INCLUDE_DIRS})
-  #boost_report_value(JNI_INCLUDE_DIRS)
+  boost_report_value(JNI_INCLUDE_DIRS)
 endif(JNI_SUPPORT)
 
 #################################################
@@ -272,6 +283,10 @@ add_library( ${PROJ_CORE_TARGET}
                     ${ALL_LIBPROJ_HEADERS}
                     ${PROJ_RESOURCES}  )
 
+if (NOT CMAKE_VERSION VERSION_LESS 2.8.11)
+  target_include_directories (${PROJ_CORE_TARGET} INTERFACE
+    $<INSTALL_INTERFACE:${INCLUDEDIR}>)
+endif ()
 
 if(WIN32)
   set_target_properties(${PROJ_CORE_TARGET}
@@ -330,11 +345,7 @@ endif(NOT BUILD_FRAMEWORKS_AND_BUNDLE)
 ##############################################
 # Core configuration summary
 ##############################################
-#boost_report_value(PROJ_CORE_TARGET)
-#boost_report_value(PROJ_CORE_TARGET_OUTPUT_NAME)
-#boost_report_value(PROJ_LIBRARY_TYPE)
-#boost_report_value(PROJ_LIBRARIES)
-
-
-
-
+boost_report_value(PROJ_CORE_TARGET)
+boost_report_value(PROJ_CORE_TARGET_OUTPUT_NAME)
+boost_report_value(PROJ_LIBRARY_TYPE)
+boost_report_value(PROJ_LIBRARIES)

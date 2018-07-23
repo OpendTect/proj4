@@ -1,5 +1,9 @@
 #define PJ_LIB__
-#include <projects.h>
+
+#include <errno.h>
+#include <math.h>
+
+#include "projects.h"
 
 PROJ_HEAD(ocea, "Oblique Cylindrical Equal Area") "\n\tCyl, Sph"
     "lonc= alpha= or\n\tlat_1= lat_2= lon_1= lon_2=";
@@ -18,7 +22,6 @@ static XY s_forward (LP lp, PJ *P) {           /* Spheroidal, forward */
     XY xy = {0.0,0.0};
     struct pj_opaque *Q = P->opaque;
     double t;
-
     xy.y = sin(lp.lam);
     t = cos(lp.lam);
     xy.x = atan((tan(lp.phi) * Q->cosphi + Q->sinphi * xy.y) / t);
@@ -45,32 +48,16 @@ static LP s_inverse (XY xy, PJ *P) {           /* Spheroidal, inverse */
 }
 
 
-static void *freeup_new (PJ *P) {                       /* Destructor */
-    if (0==P)
-        return 0;
-    if (0==P->opaque)
-        return pj_dealloc (P);
-
-    pj_dealloc (P->opaque);
-    return pj_dealloc(P);
-}
-
-static void freeup (PJ *P) {
-    freeup_new (P);
-    return;
-}
-
-
 PJ *PROJECTION(ocea) {
     double phi_0=0.0, phi_1, phi_2, lam_1, lam_2, lonz, alpha;
 
     struct pj_opaque *Q = pj_calloc (1, sizeof (struct pj_opaque));
     if (0==Q)
-        return freeup_new (P);
+        return pj_default_destructor (P, ENOMEM);
     P->opaque = Q;
 
-    Q->rok = P->a / P->k0;
-    Q->rtk = P->a * P->k0;
+    Q->rok = 1. / P->k0;
+    Q->rtk = P->k0;
     /*If the keyword "alpha" is found in the sentence then use 1point+1azimuth*/
     if ( pj_param(P->ctx, P->params, "talpha").i) {
         /*Define Pole of oblique transformation from 1 point & 1 azimuth*/
@@ -92,6 +79,11 @@ PJ *PROJECTION(ocea) {
             sin(phi_1) * cos(phi_2) * cos(lam_2),
             sin(phi_1) * cos(phi_2) * sin(lam_2) -
             cos(phi_1) * sin(phi_2) * sin(lam_1) );
+
+        /* take care of P->lam0 wrap-around when +lam_1=-90*/
+        if (lam_1 == -M_HALFPI)
+            Q->singam = -Q->singam;
+
         /*Equation 9-2 page 80 (http://pubs.usgs.gov/pp/1395/report.pdf)*/
         Q->sinphi = atan(-cos(Q->singam - lam_1) / tan(phi_1));
     }
@@ -106,48 +98,3 @@ PJ *PROJECTION(ocea) {
 
     return P;
 }
-
-
-#ifndef PJ_SELFTEST
-int pj_ocea_selftest (void) {return 0;}
-#else
-
-int pj_ocea_selftest (void) {
-    double tolerance_lp = 1e-10;
-    double tolerance_xy = 1e-7;
-
-    char s_args[] = {"+proj=ocea   +a=6400000    +lat_1=0.5 +lat_2=2"};
-
-    LP fwd_in[] = {
-        { 2, 1},
-        { 2,-1},
-        {-2, 1},
-        {-2,-1}
-    };
-
-    XY s_fwd_expect[] = {
-        {127964312562778.156,  1429265667691.05786},
-        {129394957619297.641,  1429265667691.06812},
-        {127964312562778.188, -1429265667691.0498},
-        {129394957619297.688, -1429265667691.03955},
-    };
-
-    XY inv_in[] = {
-        { 200, 100},
-        { 200,-100},
-        {-200, 100},
-        {-200,-100}
-    };
-
-    LP s_inv_expect[] = {
-        { 179.999999999860108,  2.79764548403721305e-10},
-        {-179.999999999860108,  2.7976454840372327e-10},
-        { 179.999999999860108, -2.7976454840372327e-10},
-        {-179.999999999860108, -2.79764548403721305e-10},
-    };
-
-    return pj_generic_selftest (0, s_args, tolerance_xy, tolerance_lp, 4, 4, fwd_in, 0, s_fwd_expect, inv_in, 0, s_inv_expect);
-}
-
-
-#endif
