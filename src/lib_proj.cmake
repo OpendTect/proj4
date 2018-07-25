@@ -1,8 +1,8 @@
 ##############################################
 ### SWITCH BETWEEN STATIC OR SHARED LIBRARY###
 ##############################################
-colormsg(_HIBLUE_ "Configuring proj library:")
-message(STATUS "")
+# colormsg(_HIBLUE_ "Configuring proj library:")
+# message(STATUS "")
 
 # default config, shared on unix and static on Windows
 if(UNIX)
@@ -251,7 +251,7 @@ find_package(JNI QUIET)
 if(JNI_SUPPORT AND NOT JNI_FOUND)
   message(FATAL_ERROR "jni support is required but jni is not found")
 endif(JNI_SUPPORT AND NOT JNI_FOUND)
-boost_report_value(JNI_SUPPORT)
+# boost_report_value(JNI_SUPPORT)
 if(JNI_SUPPORT)
   set(SRC_LIBPROJ_CORE ${SRC_LIBPROJ_CORE}
                        jniproj.c )
@@ -260,7 +260,7 @@ if(JNI_SUPPORT)
   source_group("Source Files\\JNI" FILES ${SRC_LIBPROJ_JNI})
   add_definitions(-DJNI_ENABLED)
   include_directories( ${JNI_INCLUDE_DIRS})
-  boost_report_value(JNI_INCLUDE_DIRS)
+#  boost_report_value(JNI_INCLUDE_DIRS)
 endif(JNI_SUPPORT)
 
 #################################################
@@ -345,7 +345,7 @@ endif(NOT BUILD_FRAMEWORKS_AND_BUNDLE)
 ##############################################
 # Core configuration summary
 ##############################################
-boost_report_value(PROJ_CORE_TARGET)
-boost_report_value(PROJ_CORE_TARGET_OUTPUT_NAME)
-boost_report_value(PROJ_LIBRARY_TYPE)
-boost_report_value(PROJ_LIBRARIES)
+# boost_report_value(PROJ_CORE_TARGET)
+# boost_report_value(PROJ_CORE_TARGET_OUTPUT_NAME)
+# boost_report_value(PROJ_LIBRARY_TYPE)
+# boost_report_value(PROJ_LIBRARIES)

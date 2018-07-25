@@ -11,6 +11,9 @@
 #################################################################################
 cmake_minimum_required(VERSION 2.6.0 FATAL_ERROR)
 
+# Suppress warning about variables like PROJECT_VERSION
+cmake_policy(SET CMP0048 NEW)
+
 # For historic reasons, the CMake PROJECT-NAME is PROJ4
 project(PROJ4 C)
 set(PROJECT_INTERN_NAME PROJ)
@@ -50,8 +53,6 @@ set(CMAKE_MODULE_PATH ${PROJ4_SOURCE_DIR}/cmake ${CMAKE_MODULE_PATH})
 
 include(ProjUtilities)
 
-message(STATUS "")
-colormsg(_HIBLUE_ "Configuring PROJ:")
 
 #################################################################################
 #PROJ version information
@@ -106,8 +107,8 @@ else ()
   add_definitions (-DHAVE_C99_MATH=0)
 endif ()
 
-boost_report_value(PROJ_PLATFORM_NAME)
-boost_report_value(PROJ_COMPILER_NAME)
+# boost_report_value(PROJ_PLATFORM_NAME)
+# boost_report_value(PROJ_COMPILER_NAME)
 
 # Set a default build type for single-configuration cmake generators if
 # no build type is set.
@@ -122,7 +123,7 @@ if (MSVC OR CMAKE_CONFIGURATION_TYPES)
 endif ()
 
 option(PROJ_TESTS "Enable build of collection of PROJ tests" ON)
-boost_report_value(PROJ_TESTS)
+# boost_report_value(PROJ_TESTS)
 if(PROJ_TESTS)
     include(CTest)
     enable_testing()
@@ -154,7 +155,6 @@ set(CMAKECONFIGDIR "${DEFAULT_CMAKEDIR}" CACHE PATH "The directory to install cm
 #################################################################################
 include_directories(${PROJ4_SOURCE_DIR}/src)
 
-message(STATUS "")
 add_subdirectory(nad)
 add_subdirectory(src)
 add_subdirectory(man)
