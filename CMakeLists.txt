@@ -159,5 +159,4 @@ add_subdirectory(nad)
 add_subdirectory(src)
 add_subdirectory(man)
 add_subdirectory(cmake)
-add_subdirectory(test)
 
