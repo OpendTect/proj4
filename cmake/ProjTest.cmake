@@ -4,10 +4,8 @@
 
 function(proj_add_test_script_sh SH_NAME BIN_USE)
   if ( NOT PROJ_TEST )
-    message("RETURNING FROM proj_add_test_script_sh AS PROJ_TEST is OFF")
     return()
   endif()
-  message("RUNNING proj_add_test_script_sh AS PROJ_TEST is ON")
   if(UNIX)
     get_filename_component(testname ${SH_NAME} NAME_WE)
 
