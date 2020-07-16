@@ -26,35 +26,34 @@ endif()
 if(WIN32)
   # Compilers, taken from http://predef.sourceforge.net/precomp.html#sec34
   if(MSVC)
-    if(MSVC_VERSION EQUAL 1200)
+    if (MSVC_VERSION EQUAL 1200)
       set(PROJ_COMPILER_NAME "msvc-6.0")
-    endif()
-    if(MSVC_VERSION EQUAL 1300)
+    else if (MSVC_VERSION EQUAL 1300)
       set(PROJ_COMPILER_NAME "msvc-7.0")
-    endif()
-    if(MSVC_VERSION EQUAL 1310)
+    else if (MSVC_VERSION EQUAL 1310)
       set(PROJ_COMPILER_NAME "msvc-7.1") #Visual Studio 2003
-    endif()
-    if(MSVC_VERSION EQUAL 1400)
+    else if (MSVC_VERSION EQUAL 1400)
       set(PROJ_COMPILER_NAME "msvc-8.0") #Visual Studio 2005
-    endif()
-    if(MSVC_VERSION EQUAL 1500)
+    else if (MSVC_VERSION EQUAL 1500)
       set(PROJ_COMPILER_NAME "msvc-9.0") #Visual Studio 2008
-    endif()
-    if(MSVC_VERSION EQUAL 1600)
+    else if (MSVC_VERSION EQUAL 1600)
       set(PROJ_COMPILER_NAME "msvc-10.0") #Visual Studio 2010
-    endif()
-    if(MSVC_VERSION EQUAL 1700)
+    else if (MSVC_VERSION EQUAL 1700)
       set(PROJ_COMPILER_NAME "msvc-11.0") #Visual Studio 2012
-    endif()
-    if(MSVC_VERSION EQUAL 1800)
+    else if (MSVC_VERSION LESS 1900)
       set(PROJ_COMPILER_NAME "msvc-12.0") #Visual Studio 2013
-    endif()
-    if(MSVC_VERSION EQUAL 1900) # CMake 3.1+
+    else if (MSVC_VERSION LESS 1910)
       set(PROJ_COMPILER_NAME "msvc-14.0") #Visual Studio 2015
-    endif()
-    if(MSVC_VERSION GREATER 1900 AND MSVC_VERSION LESS 1920) # CMake 3.8+
-      set(PROJ_COMPILER_NAME "msvc-14.1") #Visual Studio 2017
+    else if (MSVC_VERSION LESS 1920)
+      set(PROJ_COMPILER_NAME "msvc-15.0") #Visual Studio 2017
+    else if (MSVC_VERSION LESS 1930)
+      set(PROJ_COMPILER_NAME "msvc-16.2") #Visual Studio 2019
+    else if (MSVC_VERSION LESS 1940)
+      set(PROJ_COMPILER_NAME "msvc-16.3") #Visual Studio 2019
+    else if (MSVC_VERSION LESS 1950)
+      set(PROJ_COMPILER_NAME "msvc-16.4") #Visual Studio 2019
+    else if (MSVC_VERSION LESS 1960)
+      set(PROJ_COMPILER_NAME "msvc-16.5") #Visual Studio 2019
     endif()
   endif(MSVC)
   
